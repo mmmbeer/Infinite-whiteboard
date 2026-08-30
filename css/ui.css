@@ -179,6 +179,7 @@
   border: 1px solid var(--line);
   background: rgba(46, 53, 50, .94);
   box-shadow: var(--shadow);
+  pointer-events: none;
 }
 
 .minimap::before {
@@ -192,9 +193,10 @@
   letter-spacing: .13em;
 }
 
-.minimap-node { position: absolute; min-width: 3px; min-height: 3px; background: #cbd2d0; }
-.minimap-group { position: absolute; border: 1px solid #7b8782; }
-.minimap #minimap-window { position: absolute; border: 1px solid var(--accent); background: rgba(255, 113, 91, .08); }
+.minimap-node { position: absolute; z-index: 1; min-width: 3px; min-height: 3px; background: #cbd2d0; }
+.minimap-group { position: absolute; z-index: 1; border: 1px solid #7b8782; }
+.minimap-axis { position: absolute; z-index: 1; min-width: 2px; min-height: 2px; background: #8b2635; }
+.minimap #minimap-window { position: absolute; z-index: 2; border: 1px solid var(--accent); background: rgba(255, 113, 91, .08); }
 
 .modal-backdrop {
   position: fixed;

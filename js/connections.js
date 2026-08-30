@@ -45,8 +45,9 @@ export function createEdge(from, to, fromAnchor = "e", toAnchor = "w") {
   state.board.edges.push(edge); commit("edges", false); return edge;
 }
 
-export function bindEdgeInteractions(svg, onSelect) {
+export function bindEdgeInteractions(svg, onSelect, shouldPan = () => false) {
   svg.addEventListener("pointerdown", (event) => {
+    if (shouldPan(event)) return;
     const group = event.target.closest("[data-edge]");
     if (!group) return;
     event.stopPropagation();

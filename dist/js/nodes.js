@@ -65,6 +65,7 @@ export async function renderNodes(layer) {
 
 export function bindNodeInteractions(layer, canvasApi) {
   layer.addEventListener("pointerdown", (event) => {
+    if (canvasApi.shouldPan?.(event)) return;
     const resizeHandle = event.target.closest(".resize-handle");
     const rotateHandle = event.target.closest(".rotate-handle");
     const anchor = event.target.closest(".anchor");

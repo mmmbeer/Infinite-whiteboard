@@ -15,8 +15,9 @@ export function renderAxes(layer) {
   }).join("");
 }
 
-export function bindAxisInteractions(layer, onSelect) {
+export function bindAxisInteractions(layer, onSelect, shouldPan = () => false) {
   layer.addEventListener("pointerdown", (event) => {
+    if (shouldPan(event)) return;
     const axis = event.target.closest(".axis");
     if (!axis) return;
     if (!event.shiftKey) state.selected.clear();

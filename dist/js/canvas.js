@@ -5,6 +5,28 @@ import { bindEdgeInteractions, createEdge, getAnchorPoint, getClosestAnchor, ren
 import { bindGroupInteractions, renderGroups, updateGroupBounds } from "./groups.js";
 import { bindAxisInteractions, renderAxes } from "./axes.js";
 
+export function visibleWorldBounds(view, rect) {
+  return { x: -view.x / view.zoom, y: -view.y / view.zoom, w: rect.width / view.zoom, h: rect.height / view.zoom };
+}
+
+export function minimapBounds(items, visible) {
+  const raw = boundsOf([...items, visible]);
+  const padding = Math.max(20, Math.max(raw.w, raw.h) * .05);
+  return { x: raw.x - padding, y: raw.y - padding, w: raw.w + padding * 2, h: raw.h + padding * 2 };
+}
+
+export function minimapLayout(bounds, width = 142, height = 86) {
+  const inset = { left: 6, top: 14, right: 6, bottom: 6 };
+  const innerWidth = Math.max(1, width - inset.left - inset.right);
+  const innerHeight = Math.max(1, height - inset.top - inset.bottom);
+  const scale = Math.min(innerWidth / bounds.w, innerHeight / bounds.h);
+  return {
+    scale,
+    x: inset.left + (innerWidth - bounds.w * scale) / 2,
+    y: inset.top + (innerHeight - bounds.h * scale) / 2,
+  };
+}
+
 export class InfiniteCanvas {
   constructor({ onSelection, onCreate, onCapture, onEditNode }) {
     this.viewport = $("#viewport"); this.world = $("#world");
@@ -13,7 +35,8 @@ export class InfiniteCanvas {
     this.selectionBox = $("#selection-box"); this.captureBox = $("#capture-box");
     this.onSelection = onSelection; this.onCreate = onCreate; this.onCapture = onCapture; this.onEditNode = onEditNode;
     this.preview = null; this.drag = null; this.longPress = null;
-    this.liveFrame = null; this.liveNodeIds = new Set(); this.liveGroups = new Set(); this.liveAxes = new Set();
+    this.liveFrame = null; this.minimapFrame = null;
+    this.liveNodeIds = new Set(); this.liveGroups = new Set(); this.liveAxes = new Set();
   }
 
   init() {
@@ -24,10 +47,11 @@ export class InfiniteCanvas {
       beginLiveTransform: (nodes) => this.beginLiveTransform(nodes),
       queueLiveNodes: (nodes) => this.queueLiveNodes(nodes),
       finishLiveTransform: (reason) => this.finishLiveTransform(reason),
+      shouldPan: (event) => this.shouldPan(event),
     });
-    bindEdgeInteractions(this.edgesLayer, () => this.refreshSelection());
-    bindGroupInteractions(this.groupsLayer, () => this.refreshSelection());
-    bindAxisInteractions(this.axesLayer, () => this.refreshSelection());
+    bindEdgeInteractions(this.edgesLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
+    bindGroupInteractions(this.groupsLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
+    bindAxisInteractions(this.axesLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
     this.viewport.addEventListener("pointerdown", (event) => this.pointerDown(event));
     this.viewport.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
     this.viewport.addEventListener("dblclick", (event) => this.doubleClick(event));
@@ -48,7 +72,7 @@ export class InfiniteCanvas {
     const view = state.board.viewport;
     this.world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`;
     $("#zoom-value").textContent = `${Math.round(view.zoom * 100)}%`;
-    this.updateMinimapWindow();
+    this.queueMinimapUpdate();
   }
   async refresh(reason = "render") {
     if (["move", "transform-live", "transform"].includes(reason)) state.board.groups.forEach((group) => updateGroupBounds(group.id));
@@ -60,7 +84,7 @@ export class InfiniteCanvas {
     }
     renderGroups(this.groupsLayer); renderAxes(this.axesLayer); renderEdges(this.edgesLayer, this.preview);
     await renderNodes(this.nodesLayer); this.world.classList.toggle("connect-mode", state.tool === "connect");
-    this.updateMinimap(); if (!["inspector-live", "transform-live"].includes(reason)) this.onSelection?.();
+    this.queueMinimapUpdate(); if (!["inspector-live", "transform-live"].includes(reason)) this.onSelection?.();
   }
   refreshSelection() { this.refresh("selection"); }
 
@@ -130,14 +154,17 @@ export class InfiniteCanvas {
 
   pointerDown(event) {
     if (event.button !== 0 && event.button !== 1) return;
+    if (event.target.closest(".create-fab,.zoom-controls")) return;
+    if (this.shouldPan(event)) return this.startPan(event);
     const interactive = event.target.closest(".board-node,.anchor,.edge-hit,.group-box,.axis,.create-fab,.zoom-controls");
     if (event.target.closest(".group-box,.axis") && state.tool === "select") return this.startItemDrag(event);
     if (interactive) return;
     if (state.tool === "capture") return this.startCapture(event);
-    if (state.tool === "hand" || event.button === 1 || event.altKey || this.spaceDown) return this.startPan(event);
     this.startLongPress(event);
     this.startSelection(event);
   }
+
+  shouldPan(event) { return state.tool === "hand" || event.button === 1 || event.altKey || this.spaceDown; }
 
   startPan(event) {
     event.preventDefault(); const view = state.board.viewport; const origin = { x: view.x, y: view.y, cx: event.clientX, cy: event.clientY };
@@ -234,21 +261,49 @@ export class InfiniteCanvas {
   setSpace(value) { this.spaceDown = value; this.viewport.style.cursor = value ? "grab" : state.tool === "hand" ? "grab" : "default"; }
   viewportCenter() { const rect = this.viewport.getBoundingClientRect(); return this.screenToWorld({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }); }
 
+  queueMinimapUpdate() {
+    if (this.minimapFrame) return;
+    this.minimapFrame = requestAnimationFrame(() => { this.minimapFrame = null; this.updateMinimap(); });
+  }
+
+  minimapItems() {
+    const axes = state.board.axes.map((axis) => ({
+      ...axis,
+      w: axis.orientation === "x" ? axis.length : 1,
+      h: axis.orientation === "y" ? axis.length : 1,
+      minimapType: "axis",
+    }));
+    return [
+      ...state.board.groups.map((item) => ({ ...item, minimapType: "group" })),
+      ...state.board.nodes.map((item) => ({ ...item, minimapType: "node" })),
+      ...axes,
+    ];
+  }
+
   updateMinimap() {
     const map = $("#minimap"); if (!map) return;
-    map.querySelectorAll(".minimap-node,.minimap-group").forEach((element) => element.remove());
-    const items = [...state.board.nodes, ...state.board.groups]; const bounds = boundsOf(items, 120); const scale = Math.min(140 / bounds.w, 84 / bounds.h);
-    state.board.groups.forEach((item) => this.addMinimapItem(map, item, bounds, scale, "minimap-group"));
-    state.board.nodes.forEach((item) => this.addMinimapItem(map, item, bounds, scale, "minimap-node"));
-    this.updateMinimapWindow(bounds, scale);
+    const rect = this.viewport.getBoundingClientRect(); const visible = visibleWorldBounds(state.board.viewport, rect);
+    const items = this.minimapItems(); const bounds = minimapBounds(items, visible);
+    const layout = minimapLayout(bounds, map.clientWidth || 142, map.clientHeight || 86);
+    const existing = new Map([...map.querySelectorAll("[data-minimap-id]")].map((element) => [element.dataset.minimapId, element]));
+    items.forEach((item) => {
+      let element = existing.get(item.id);
+      if (!element) { element = document.createElement("i"); element.dataset.minimapId = item.id; map.append(element); }
+      element.className = `minimap-${item.minimapType}`;
+      this.placeMinimapItem(element, item, bounds, layout);
+      existing.delete(item.id);
+    });
+    existing.forEach((element) => element.remove());
+    this.placeMinimapItem($("#minimap-window"), visible, bounds, layout);
   }
-  updateMinimapWindow(providedBounds, providedScale) {
-    const map = $("#minimap"); if (!map) return;
-    const items = [...state.board.nodes, ...state.board.groups];
-    const bounds = providedBounds || boundsOf(items, 120);
-    const scale = providedScale || Math.min(140 / bounds.w, 84 / bounds.h);
-    const rect = this.viewport.getBoundingClientRect(); const view = state.board.viewport; const visible = { x: -view.x / view.zoom, y: -view.y / view.zoom, w: rect.width / view.zoom, h: rect.height / view.zoom };
-    const windowEl = $("#minimap-window"); Object.assign(windowEl.style, { left: `${5 + (visible.x - bounds.x) * scale}px`, top: `${5 + (visible.y - bounds.y) * scale}px`, width: `${Math.max(3, visible.w * scale)}px`, height: `${Math.max(3, visible.h * scale)}px` });
+
+  placeMinimapItem(element, item, bounds, layout) {
+    const x = layout.x + (item.x - bounds.x) * layout.scale;
+    const y = layout.y + (item.y - bounds.y) * layout.scale;
+    Object.assign(element.style, {
+      left: `${x}px`, top: `${y}px`,
+      width: `${Math.max(2, item.w * layout.scale)}px`,
+      height: `${Math.max(2, item.h * layout.scale)}px`,
+    });
   }
-  addMinimapItem(map, item, bounds, scale, className) { const el = document.createElement("i"); el.className = className; Object.assign(el.style, { left: `${5 + (item.x - bounds.x) * scale}px`, top: `${5 + (item.y - bounds.y) * scale}px`, width: `${Math.max(3, item.w * scale)}px`, height: `${Math.max(3, item.h * scale)}px` }); map.append(el); }
 }

@@ -21,8 +21,9 @@ export function renderGroups(layer) {
   layer.innerHTML = state.board.groups.map((group) => `<section class="group-box ${state.selected.has(group.id) ? "selected" : ""}" data-id="${group.id}" style="left:${group.x}px;top:${group.y}px;width:${group.w}px;height:${group.h}px;--group-color:${group.color}"><header class="group-heading"><span class="group-dot"></span>${escapeHtml(group.title)}</header></section>`).join("");
 }
 
-export function bindGroupInteractions(layer, onSelect) {
+export function bindGroupInteractions(layer, onSelect, shouldPan = () => false) {
   layer.addEventListener("pointerdown", (event) => {
+    if (shouldPan(event)) return;
     const group = event.target.closest(".group-box");
     if (!group) return;
     if (!event.shiftKey) state.selected.clear();
