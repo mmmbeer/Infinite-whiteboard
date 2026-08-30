@@ -21,6 +21,9 @@ export class InfiniteCanvas {
       startConnection: (...args) => this.startConnection(...args),
       screenToWorld: (point) => this.screenToWorld(point), refreshSelection: () => this.refreshSelection(),
       refresh: (reason) => this.refresh(reason), editNode: (node) => this.onEditNode(node),
+      beginLiveTransform: (nodes) => this.beginLiveTransform(nodes),
+      queueLiveNodes: (nodes) => this.queueLiveNodes(nodes),
+      finishLiveTransform: (reason) => this.finishLiveTransform(reason),
     });
     bindEdgeInteractions(this.edgesLayer, () => this.refreshSelection());
     bindGroupInteractions(this.groupsLayer, () => this.refreshSelection());
