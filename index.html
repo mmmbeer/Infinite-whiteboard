@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#10120f" />
+  <title>Infinite Whiteboard</title>
+  <link rel="stylesheet" href="./css/base.css" />
+  <link rel="stylesheet" href="./css/canvas.css" />
+  <link rel="stylesheet" href="./css/ui.css" />
+</head>
+<body>
+  <main id="app" aria-label="Infinite Whiteboard application">
+    <header class="topbar">
+      <div class="brand" aria-label="Infinite Whiteboard">
+        <span class="brand-mark">∞</span>
+        <span>Infinite Whiteboard</span>
+      </div>
+      <div class="board-title-wrap">
+        <input id="board-title" class="board-title" value="Untitled board" aria-label="Board title" />
+        <span id="save-status" class="save-status">Saved locally</span>
+      </div>
+      <nav class="top-actions" aria-label="Board actions">
+        <button class="button ghost" id="undo-btn" title="Undo (Ctrl+Z)">↶</button>
+        <button class="button ghost" id="redo-btn" title="Redo (Ctrl+Shift+Z)">↷</button>
+        <button class="button" id="import-btn">Upload</button>
+        <button class="button" id="export-btn">Export ZIP</button>
+      </nav>
+    </header>
+
+    <aside class="tool-rail" aria-label="Canvas tools">
+      <button class="tool active" data-tool="select" title="Select (V)"><span>↖</span><small>Select</small></button>
+      <button class="tool" data-tool="hand" title="Pan (H)"><span>✥</span><small>Pan</small></button>
+      <button class="tool" data-tool="connect" title="Connect (C)"><span>⌁</span><small>Connect</small></button>
+      <button class="tool" data-tool="group" title="Create group (G)"><span>▣</span><small>Group</small></button>
+      <button class="tool" data-tool="axis" title="Add time axis (A)"><span>⇥</span><small>Axis</small></button>
+      <button class="tool" data-tool="capture" title="Capture area"><span>⌗</span><small>Capture</small></button>
+    </aside>
+
+    <section id="viewport" class="viewport" tabindex="0" aria-label="Whiteboard canvas">
+      <div id="drop-hint" class="drop-hint">Drop images, text, or Markdown exactly where you want them</div>
+      <div id="world" class="world">
+        <div id="grid" class="grid"></div>
+        <div id="axes-layer" class="axes-layer"></div>
+        <div id="groups-layer" class="groups-layer"></div>
+        <svg id="edges-layer" class="edges-layer" overflow="visible" aria-hidden="true"></svg>
+        <div id="nodes-layer" class="nodes-layer"></div>
+      </div>
+      <div id="selection-box" class="selection-box hidden"></div>
+      <div id="capture-box" class="capture-box hidden"><span>Release to capture</span></div>
+      <button id="create-fab" class="create-fab" aria-label="Create new item" title="Create new (N)">+</button>
+      <div class="zoom-controls">
+        <button id="zoom-out" aria-label="Zoom out">−</button>
+        <button id="zoom-reset" aria-label="Reset zoom"><span id="zoom-value">100%</span></button>
+        <button id="zoom-in" aria-label="Zoom in">+</button>
+        <button id="zoom-fit" aria-label="Fit board">Fit</button>
+      </div>
+      <div class="minimap" id="minimap" aria-hidden="true"><div id="minimap-window"></div></div>
+    </section>
+
+    <aside id="inspector" class="inspector" aria-label="Inspector">
+      <div class="inspector-empty">
+        <span>◫</span>
+        <h2>Nothing selected</h2>
+        <p>Select an item to edit its description, categories, tags, and grouping.</p>
+      </div>
+    </aside>
+
+    <input id="file-input" type="file" accept="image/*,.txt,.md,.markdown,text/plain,text/markdown" multiple hidden />
+    <div id="modal-root"></div>
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  </main>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
