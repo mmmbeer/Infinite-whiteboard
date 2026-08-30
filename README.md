@@ -16,7 +16,9 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 
 - Drop images, `.txt`, `.md`, or `.markdown` files exactly where they should appear.
 - Double-click, right-click, or long-press empty canvas space to create a card or era axis.
-- Drag a card by its header. Shift-click or drag-select to select several cards.
+- Drag a card by its header. Ctrl/Cmd-click toggles an item in the current selection. Shift-click remains available for additive selection.
+- Use the **Multi** tool on touch devices to tap several items into or out of a selection.
+- Copy, cut, paste, or duplicate individual items, mixed selections, and complete groups. Internal connections between copied cards are retained.
 - Choose **Connect**, then drag from one card anchor to another card anchor.
 - Drag from any selected card's anchor toward another card. The preview snaps to the nearest target anchor.
 - Select an image to reveal four resize handles and a rotation handle. Hold `Shift` while resizing to preserve its aspect ratio or while rotating to snap to 15° increments.
@@ -25,22 +27,47 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 - Choose **Capture**, then drag across a region to download a PNG automatically.
 - Choose **Export ZIP** to download `board.json`, every original asset, a full-board preview, and export notes.
 - Open **Settings** to switch all board connections between curved and straight paths.
+- Right-click or long-press an item, group, axis, or connection for its context menu.
+- Pinch with two fingers to zoom and pan. Touch targets and transform handles enlarge automatically on coarse-pointer devices.
 
 ## Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
 | `V` | Select tool |
+| `M` | Touch-friendly multi-select tool |
 | `H` | Pan tool |
 | `C` | Connect tool |
 | `N` | Create item |
+| `U` | Upload assets |
 | `A` | Add era axis |
+| `P` | Capture area |
 | `G` | Group selected cards |
+| `Ctrl/Cmd+click` | Add or remove an item from the selection |
+| `Ctrl/Cmd+A` | Select all |
+| `Ctrl/Cmd+C / X / V` | Copy / cut / paste |
+| `Ctrl/Cmd+D` | Duplicate selection |
+| `Ctrl/Cmd+G` | Group selection |
+| `Ctrl/Cmd+Shift+G` | Ungroup selection |
 | `Space` + drag | Temporarily pan |
 | `Delete` | Delete selection |
+| `Enter` | Edit the selected text or Markdown card |
+| `Arrow keys` | Move selection by 1px (`Shift` for 10px) |
 | `Ctrl/Cmd+Z` | Undo |
 | `Ctrl/Cmd+Shift+Z` | Redo |
+| `+ / -` | Zoom in / out |
+| `1` | Reset to 100% zoom |
 | `0` | Fit board |
+| `S / E` | Settings / export ZIP |
+| `?` | Open the full keyboard and touch reference |
+
+## Checks
+
+Run the clipboard and selection regression check with:
+
+```bash
+node tests/clipboard.test.mjs
+```
 
 ## Data and privacy
 

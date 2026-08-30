@@ -28,15 +28,16 @@ export function minimapLayout(bounds, width = 142, height = 86) {
 }
 
 export class InfiniteCanvas {
-  constructor({ onSelection, onCreate, onCapture, onEditNode }) {
+  constructor({ onSelection, onCreate, onCapture, onEditNode, onContext }) {
     this.viewport = $("#viewport"); this.world = $("#world");
     this.nodesLayer = $("#nodes-layer"); this.edgesLayer = $("#edges-layer");
     this.groupsLayer = $("#groups-layer"); this.axesLayer = $("#axes-layer");
     this.selectionBox = $("#selection-box"); this.captureBox = $("#capture-box");
-    this.onSelection = onSelection; this.onCreate = onCreate; this.onCapture = onCapture; this.onEditNode = onEditNode;
+    this.onSelection = onSelection; this.onCreate = onCreate; this.onCapture = onCapture; this.onEditNode = onEditNode; this.onContext = onContext;
     this.preview = null; this.drag = null; this.longPress = null;
     this.liveFrame = null; this.minimapFrame = null;
     this.liveNodeIds = new Set(); this.liveGroups = new Set(); this.liveAxes = new Set();
+    this.touchPoints = new Map(); this.pinch = null; this.touchGestureActive = false;
   }
 
   init() {
@@ -48,14 +49,24 @@ export class InfiniteCanvas {
       queueLiveNodes: (nodes) => this.queueLiveNodes(nodes),
       finishLiveTransform: (reason) => this.finishLiveTransform(reason),
       shouldPan: (event) => this.shouldPan(event),
+      isGesturing: () => this.isGesturing(),
     });
     bindEdgeInteractions(this.edgesLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
     bindGroupInteractions(this.groupsLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
     bindAxisInteractions(this.axesLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
+    this.viewport.addEventListener("pointerdown", (event) => this.trackTouchStart(event), true);
+    this.viewport.addEventListener("pointermove", (event) => this.trackTouchMove(event), true);
+    this.viewport.addEventListener("pointerup", (event) => this.trackTouchEnd(event), true);
+    this.viewport.addEventListener("pointercancel", (event) => this.trackTouchEnd(event), true);
     this.viewport.addEventListener("pointerdown", (event) => this.pointerDown(event));
     this.viewport.addEventListener("wheel", (event) => this.wheel(event), { passive: false });
     this.viewport.addEventListener("dblclick", (event) => this.doubleClick(event));
-    this.viewport.addEventListener("contextmenu", (event) => { event.preventDefault(); if (!event.target.closest(".board-node,.group-box,.axis")) this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })); });
+    this.viewport.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      const target = this.contextTarget(event.target);
+      if (target) this.onContext?.({ ...target, x: event.clientX, y: event.clientY, point: this.screenToWorld({ x: event.clientX, y: event.clientY }) });
+      else this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY }));
+    });
     this.viewport.addEventListener("pointercancel", () => this.cancelDrag());
     this.applyTransform(); this.refresh("init");
   }
@@ -155,45 +166,56 @@ export class InfiniteCanvas {
   pointerDown(event) {
     if (event.button !== 0 && event.button !== 1) return;
     if (event.target.closest(".create-fab,.zoom-controls")) return;
+    if (this.isGesturing()) return;
     if (this.shouldPan(event)) return this.startPan(event);
     const interactive = event.target.closest(".board-node,.anchor,.edge-hit,.group-box,.axis,.create-fab,.zoom-controls");
+    if (interactive && event.pointerType === "touch") {
+      const target = this.contextTarget(interactive);
+      if (target) this.startLongPress(event, () => this.onContext?.({ ...target, x: event.clientX, y: event.clientY, point: this.screenToWorld({ x: event.clientX, y: event.clientY }) }));
+    }
     if (event.target.closest(".group-box,.axis") && state.tool === "select") return this.startItemDrag(event);
     if (interactive) return;
     if (state.tool === "capture") return this.startCapture(event);
-    this.startLongPress(event);
+    this.startLongPress(event, () => this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })));
     this.startSelection(event);
   }
 
-  shouldPan(event) { return state.tool === "hand" || event.button === 1 || event.altKey || this.spaceDown; }
+  shouldPan(event) { return this.isGesturing() || state.tool === "hand" || event.button === 1 || event.altKey || this.spaceDown; }
 
   startPan(event) {
     event.preventDefault(); const view = state.board.viewport; const origin = { x: view.x, y: view.y, cx: event.clientX, cy: event.clientY };
     this.viewport.style.cursor = "grabbing";
-    const move = (e) => { view.x = origin.x + e.clientX - origin.cx; view.y = origin.y + e.clientY - origin.cy; this.applyTransform(); };
-    const up = () => { document.removeEventListener("pointermove", move); this.viewport.style.cursor = state.tool === "hand" ? "grab" : "default"; commit("viewport", false); };
-    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+    const move = (e) => { if (e.pointerId !== event.pointerId || this.isGesturing()) return; view.x = origin.x + e.clientX - origin.cx; view.y = origin.y + e.clientY - origin.cy; this.applyTransform(); };
+    const up = (e) => { if (e.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); this.viewport.style.cursor = state.tool === "hand" ? "grab" : "default"; commit("viewport", false); };
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   }
 
   startSelection(event) {
     const start = { x: event.clientX, y: event.clientY }; let moved = false;
-    if (!event.shiftKey) { state.selected.clear(); state.selectedEdge = null; this.refreshSelection(); }
+    const toggle = event.ctrlKey || event.metaKey || state.tool === "multi"; const additive = event.shiftKey;
+    const initial = new Set(state.selected);
+    if (!toggle && !additive) { state.selected.clear(); state.selectedEdge = null; this.refreshSelection(); }
     const move = (e) => {
+      if (e.pointerId !== event.pointerId || this.isGesturing()) return;
       if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 4) return;
       moved = true; this.cancelLongPress();
       const rect = { x: Math.min(start.x, e.clientX), y: Math.min(start.y, e.clientY), w: Math.abs(e.clientX - start.x), h: Math.abs(e.clientY - start.y) };
       Object.assign(this.selectionBox.style, { left: `${rect.x}px`, top: `${rect.y - this.viewport.getBoundingClientRect().top}px`, width: `${rect.w}px`, height: `${rect.h}px` });
       this.selectionBox.classList.remove("hidden");
       const a = this.screenToWorld({ x: rect.x, y: rect.y }); const b = this.screenToWorld({ x: rect.x + rect.w, y: rect.y + rect.h });
-      state.selected.clear();
-      state.board.nodes.filter((node) => rectsIntersect({ x: node.x, y: node.y, w: node.w, h: node.h }, { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y })).forEach((node) => state.selected.add(node.id));
+      const hits = state.board.nodes.filter((node) => rectsIntersect({ x: node.x, y: node.y, w: node.w, h: node.h }, { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y })).map((node) => node.id);
+      state.selected = new Set(initial);
+      if (!toggle && !additive) state.selected.clear();
+      hits.forEach((id) => { if (toggle && initial.has(id)) state.selected.delete(id); else state.selected.add(id); });
       this.syncSelection();
     };
-    const up = () => { document.removeEventListener("pointermove", move); this.selectionBox.classList.add("hidden"); this.cancelLongPress(); this.refreshSelection(); };
-    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+    const up = (e) => { if (e.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); this.selectionBox.classList.add("hidden"); this.cancelLongPress(); this.refreshSelection(); };
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   }
 
   startItemDrag(event) {
     const id = event.target.closest("[data-id]").dataset.id;
+    if (!state.selected.has(id)) return;
     const group = state.board.groups.find((entry) => entry.id === id);
     const item = group || state.board.axes.find((entry) => entry.id === id);
     if (!item) return; event.preventDefault(); snapshot();
@@ -201,14 +223,15 @@ export class InfiniteCanvas {
     const members = group ? state.board.nodes.filter((node) => node.groupId === group.id) : [];
     const memberOrigins = new Map(members.map((node) => [node.id, { x: node.x, y: node.y }]));
     this.beginLiveTransform(members);
-    const move = (e) => { const point = this.screenToWorld({ x: e.clientX, y: e.clientY }); const dx = point.x - start.x; const dy = point.y - start.y; item.x = origin.x + dx; item.y = origin.y + dy; members.forEach((node) => { const base = memberOrigins.get(node.id); node.x = base.x + dx; node.y = base.y + dy; }); this.queueLiveItem(item, members); };
-    const up = () => { document.removeEventListener("pointermove", move); commit("move-item", false); this.finishLiveTransform(group ? "move" : "move-item"); };
-    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+    const move = (e) => { if (e.pointerId !== event.pointerId || this.isGesturing()) return; const point = this.screenToWorld({ x: e.clientX, y: e.clientY }); const dx = point.x - start.x; const dy = point.y - start.y; item.x = origin.x + dx; item.y = origin.y + dy; members.forEach((node) => { const base = memberOrigins.get(node.id); node.x = base.x + dx; node.y = base.y + dy; }); this.queueLiveItem(item, members); };
+    const up = (e) => { if (e.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); commit("move-item", false); this.finishLiveTransform(group ? "move" : "move-item"); };
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   }
 
   startConnection(event, nodeId, anchor) {
     event.preventDefault(); event.stopPropagation(); const start = getAnchorPoint(nodeId, anchor);
     const move = (e) => {
+      if (e.pointerId !== event.pointerId || this.isGesturing()) return;
       const point = this.screenToWorld({ x: e.clientX, y: e.clientY });
       const targetElement = document.elementFromPoint(e.clientX, e.clientY)?.closest(".board-node");
       const targetId = targetElement?.dataset.id;
@@ -217,13 +240,14 @@ export class InfiniteCanvas {
       this.preview = { start, end: snap?.point || point, anchor, toAnchor: snap?.anchor || "w" };
       renderEdges(this.edgesLayer, this.preview);
     };
-    const up = () => {
-      document.removeEventListener("pointermove", move); this.preview = null;
+    const up = (e) => {
+      if (e.pointerId !== event.pointerId) return;
+      document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); this.preview = null;
       if (this.connectionSnap) createEdge(nodeId, this.connectionSnap.nodeId, anchor, this.connectionSnap.anchor);
       this.setConnectionSnap(null);
       this.refresh("connection");
     };
-    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   }
 
   setConnectionSnap(target) {
@@ -237,11 +261,12 @@ export class InfiniteCanvas {
   startCapture(event) {
     const start = { x: event.clientX, y: event.clientY }; const viewportTop = this.viewport.getBoundingClientRect().top;
     const move = (e) => {
+      if (e.pointerId !== event.pointerId || this.isGesturing()) return;
       const rect = { x: Math.min(start.x, e.clientX), y: Math.min(start.y, e.clientY), w: Math.abs(e.clientX - start.x), h: Math.abs(e.clientY - start.y) };
       Object.assign(this.captureBox.style, { left: `${rect.x}px`, top: `${rect.y - viewportTop}px`, width: `${rect.w}px`, height: `${rect.h}px` }); this.captureBox.classList.remove("hidden");
     };
-    const up = (e) => { document.removeEventListener("pointermove", move); this.captureBox.classList.add("hidden"); const a = this.screenToWorld(start); const b = this.screenToWorld({ x: e.clientX, y: e.clientY }); this.onCapture({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }); this.setTool("select"); };
-    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+    const up = (e) => { if (e.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); this.captureBox.classList.add("hidden"); const a = this.screenToWorld(start); const b = this.screenToWorld({ x: e.clientX, y: e.clientY }); this.onCapture({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }); this.setTool("select"); };
+    document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   }
 
   wheel(event) {
@@ -255,11 +280,54 @@ export class InfiniteCanvas {
   resetZoom() { state.board.viewport.zoom = 1; this.applyTransform(); commit("viewport", false); }
   fitBoard() { const items = [...state.board.nodes, ...state.board.groups]; const bounds = boundsOf(items, 90); const rect = this.viewport.getBoundingClientRect(); const zoom = clamp(Math.min(rect.width / bounds.w, rect.height / bounds.h), .12, 1.5); state.board.viewport = { zoom, x: (rect.width - bounds.w * zoom) / 2 - bounds.x * zoom, y: (rect.height - bounds.h * zoom) / 2 - bounds.y * zoom }; this.applyTransform(); commit("viewport", false); }
   doubleClick(event) { if (!event.target.closest(".board-node,.group-box,.axis")) this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })); }
-  startLongPress(event) { this.cancelLongPress(); const point = this.screenToWorld({ x: event.clientX, y: event.clientY }); this.longPress = setTimeout(() => this.onCreate(point), 620); }
+  contextTarget(target) {
+    const node = target.closest?.(".board-node"); if (node) return { type: "node", id: node.dataset.id };
+    const group = target.closest?.(".group-box"); if (group) return { type: "group", id: group.dataset.id };
+    const axis = target.closest?.(".axis"); if (axis) return { type: "axis", id: axis.dataset.id };
+    const edge = target.closest?.("[data-edge]"); if (edge) return { type: "edge", id: edge.dataset.edge };
+    return null;
+  }
+  startLongPress(event, action) { this.cancelLongPress(); this.longPress = setTimeout(() => { this.longPress = null; navigator.vibrate?.(18); action(); }, 560); }
   cancelLongPress() { clearTimeout(this.longPress); this.longPress = null; }
   cancelDrag() { this.cancelLongPress(); this.selectionBox.classList.add("hidden"); this.captureBox.classList.add("hidden"); }
   setSpace(value) { this.spaceDown = value; this.viewport.style.cursor = value ? "grab" : state.tool === "hand" ? "grab" : "default"; }
   viewportCenter() { const rect = this.viewport.getBoundingClientRect(); return this.screenToWorld({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }); }
+
+  trackTouchStart(event) {
+    if (event.pointerType !== "touch") return;
+    this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY });
+    if (this.touchPoints.size !== 2) return;
+    this.cancelLongPress(); this.touchGestureActive = true;
+    const [a, b] = [...this.touchPoints.values()];
+    const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    this.pinch = { distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)), zoom: state.board.viewport.zoom, world: this.screenToWorld(midpoint) };
+  }
+
+  trackTouchMove(event) {
+    const point = this.touchPoints.get(event.pointerId); if (!point) return;
+    point.x = event.clientX; point.y = event.clientY;
+    if (Math.hypot(point.x - point.startX, point.y - point.startY) > 8) this.cancelLongPress();
+    if (!this.pinch || this.touchPoints.size < 2) return;
+    event.preventDefault();
+    const [a, b] = [...this.touchPoints.values()];
+    const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const distance = Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+    const zoom = clamp(this.pinch.zoom * distance / this.pinch.distance, .12, 4);
+    const rect = this.viewport.getBoundingClientRect();
+    state.board.viewport.zoom = zoom;
+    state.board.viewport.x = midpoint.x - rect.left - this.pinch.world.x * zoom;
+    state.board.viewport.y = midpoint.y - rect.top - this.pinch.world.y * zoom;
+    this.applyTransform();
+  }
+
+  trackTouchEnd(event) {
+    if (!this.touchPoints.has(event.pointerId)) return;
+    this.touchPoints.delete(event.pointerId); this.cancelLongPress();
+    if (this.pinch && this.touchPoints.size < 2) { this.pinch = null; commit("viewport", false); }
+    if (!this.touchPoints.size) this.touchGestureActive = false;
+  }
+
+  isGesturing() { return this.touchGestureActive; }
 
   queueMinimapUpdate() {
     if (this.minimapFrame) return;

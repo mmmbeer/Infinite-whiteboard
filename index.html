@@ -23,19 +23,21 @@
       <nav class="top-actions" aria-label="Board actions">
         <button class="button ghost" id="undo-btn" title="Undo (Ctrl+Z)">↶</button>
         <button class="button ghost" id="redo-btn" title="Redo (Ctrl+Shift+Z)">↷</button>
-        <button class="button" id="import-btn">Upload</button>
-        <button class="button" id="settings-btn">Settings</button>
-        <button class="button" id="export-btn">Export ZIP</button>
+        <button class="button" id="import-btn" title="Upload assets (U)">Upload</button>
+        <button class="button" id="settings-btn" title="Board settings (S)">Settings</button>
+        <button class="button ghost" id="shortcuts-btn" title="Keyboard and touch controls (?)" aria-label="Keyboard and touch controls">?</button>
+        <button class="button" id="export-btn" title="Export ZIP (E)">Export ZIP</button>
       </nav>
     </header>
 
     <aside class="tool-rail" aria-label="Canvas tools">
       <button class="tool active" data-tool="select" title="Select (V)"><span>↖</span><small>Select</small></button>
+      <button class="tool" data-tool="multi" title="Multi-select (M)"><span>☑</span><small>Multi</small></button>
       <button class="tool" data-tool="hand" title="Pan (H)"><span>✥</span><small>Pan</small></button>
       <button class="tool" data-tool="connect" title="Connect (C)"><span>⌁</span><small>Connect</small></button>
       <button class="tool" data-tool="group" title="Create group (G)"><span>▣</span><small>Group</small></button>
       <button class="tool" data-tool="axis" title="Add time axis (A)"><span>⇥</span><small>Axis</small></button>
-      <button class="tool" data-tool="capture" title="Capture area"><span>⌗</span><small>Capture</small></button>
+      <button class="tool" data-tool="capture" title="Capture area (P)"><span>⌗</span><small>Capture</small></button>
     </aside>
 
     <section id="viewport" class="viewport" tabindex="0" aria-label="Whiteboard canvas">

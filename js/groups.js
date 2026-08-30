@@ -26,8 +26,10 @@ export function bindGroupInteractions(layer, onSelect, shouldPan = () => false) 
     if (shouldPan(event)) return;
     const group = event.target.closest(".group-box");
     if (!group) return;
-    if (!event.shiftKey) state.selected.clear();
-    state.selected.add(group.dataset.id); state.selectedEdge = null; onSelect();
+    const id = group.dataset.id;
+    if (event.shiftKey || event.ctrlKey || event.metaKey || state.tool === "multi") state.selected.has(id) ? state.selected.delete(id) : state.selected.add(id);
+    else if (!state.selected.has(id)) { state.selected.clear(); state.selected.add(id); }
+    state.selectedEdge = null; onSelect();
   });
 }
 

@@ -36,7 +36,7 @@ function edgeInspector(edge) {
   return `<header class="inspector-head"><h2>Connection</h2><span class="node-kind">PATH</span></header><section class="inspector-section">${field("Label", "label", edge.label)}${field("Category", "category", edge.category)}${field("Tags — comma separated", "tags", edge.tags?.join(", "))}</section><div class="inspector-actions"><button class="button danger" data-delete>Delete path</button></div>`;
 }
 
-export function renderInspector(root, onChange, onDelete) {
+export function renderInspector(root, onChange, onDelete, onDuplicate) {
   const edge = state.selectedEdge && state.board.edges.find((item) => item.id === state.selectedEdge);
   const selected = findSelected();
   if (!edge && (!selected || state.selected.size > 1)) {
@@ -59,8 +59,7 @@ export function renderInspector(root, onChange, onDelete) {
     if (await confirmDialog({ title: "Delete selection?", message: "This removes the selected item and connected paths from this board.", confirmLabel: "Delete", destructive: true })) onDelete();
   });
   $("[data-duplicate]", root)?.addEventListener("click", () => {
-    const copy = structuredClone(item); copy.id = crypto.randomUUID(); copy.x += 32; copy.y += 32; copy.title += " copy";
-    snapshot(); state.board.nodes.push(copy); state.selected.clear(); state.selected.add(copy.id); commit("duplicate", false); onChange();
+    onDuplicate?.();
   });
 }
 

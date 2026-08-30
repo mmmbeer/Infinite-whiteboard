@@ -20,7 +20,9 @@ export function bindAxisInteractions(layer, onSelect, shouldPan = () => false) {
     if (shouldPan(event)) return;
     const axis = event.target.closest(".axis");
     if (!axis) return;
-    if (!event.shiftKey) state.selected.clear();
-    state.selected.add(axis.dataset.id); state.selectedEdge = null; onSelect();
+    const id = axis.dataset.id;
+    if (event.shiftKey || event.ctrlKey || event.metaKey || state.tool === "multi") state.selected.has(id) ? state.selected.delete(id) : state.selected.add(id);
+    else if (!state.selected.has(id)) { state.selected.clear(); state.selected.add(id); }
+    state.selectedEdge = null; onSelect();
   });
 }

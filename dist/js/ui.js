@@ -79,3 +79,46 @@ export function alertDialog({ title = "Notice", message }) {
     actions: [{ label: "OK", className: "primary", onClick: () => true }],
   }));
 }
+
+let activeContextMenu = null;
+
+export function closeContextMenu() {
+  activeContextMenu?.remove();
+  activeContextMenu = null;
+}
+
+export function openContextMenu({ x, y, label = "Selection actions", items = [] }) {
+  closeContextMenu();
+  const menu = document.createElement("div");
+  menu.className = "context-menu";
+  menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", label);
+  items.forEach((item) => {
+    if (item.separator) {
+      const separator = document.createElement("div"); separator.className = "context-separator"; separator.setAttribute("role", "separator"); menu.append(separator); return;
+    }
+    const button = document.createElement("button");
+    button.type = "button"; button.className = item.destructive ? "destructive" : ""; button.setAttribute("role", "menuitem");
+    button.disabled = item.disabled; button.innerHTML = `<span>${escapeHtml(item.label)}</span>${item.shortcut ? `<kbd>${escapeHtml(item.shortcut)}</kbd>` : ""}`;
+    button.addEventListener("click", async () => { closeContextMenu(); await item.action?.(); });
+    menu.append(button);
+  });
+  document.body.append(menu); activeContextMenu = menu;
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(6, Math.min(x, innerWidth - rect.width - 6))}px`;
+  menu.style.top = `${Math.max(6, Math.min(y, innerHeight - rect.height - 6))}px`;
+  const closeOnPointer = (event) => { if (!menu.contains(event.target)) closeContextMenu(); };
+  const closeOnKey = (event) => {
+    if (event.key === "Escape") { event.stopPropagation(); closeContextMenu(); return; }
+    if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+    event.preventDefault(); event.stopPropagation();
+    const buttons = [...menu.querySelectorAll("button:not(:disabled)")];
+    const current = buttons.indexOf(document.activeElement);
+    const offset = event.key === "ArrowDown" ? 1 : -1;
+    buttons[(current + offset + buttons.length) % buttons.length]?.focus();
+  };
+  setTimeout(() => document.addEventListener("pointerdown", closeOnPointer, { once: true }), 0);
+  menu.addEventListener("keydown", closeOnKey);
+  menu.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
+  return menu;
+}

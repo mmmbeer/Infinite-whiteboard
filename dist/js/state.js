@@ -99,6 +99,7 @@ export function removeSelected() {
   state.board.nodes = state.board.nodes.filter((node) => !ids.has(node.id));
   state.board.groups = state.board.groups.filter((group) => !ids.has(group.id));
   state.board.axes = state.board.axes.filter((axis) => !ids.has(axis.id));
+  state.board.nodes.forEach((node) => { if (ids.has(node.groupId)) node.groupId = null; });
   state.board.edges = state.board.edges.filter((edge) => !ids.has(edge.from) && !ids.has(edge.to) && edge.id !== state.selectedEdge);
   state.selected.clear(); state.selectedEdge = null; commit("delete", false); return true;
 }

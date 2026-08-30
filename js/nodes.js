@@ -75,14 +75,14 @@ export function bindNodeInteractions(layer, canvasApi) {
     if (rotateHandle) return startRotate(event, getNode(element.dataset.id), canvasApi);
     if (anchor) return canvasApi.startConnection(event, element.dataset.id, anchor.dataset.anchor);
     const id = element.dataset.id;
-    if (event.shiftKey) {
+    if (event.shiftKey || event.ctrlKey || event.metaKey || state.tool === "multi") {
       state.selected.has(id) ? state.selected.delete(id) : state.selected.add(id);
     } else if (!state.selected.has(id)) {
       state.selected.clear(); state.selected.add(id);
     }
     state.selectedEdge = null;
     canvasApi.refreshSelection();
-    if (state.tool === "select" && event.target.closest(".node-bar")) startDrag(event, canvasApi);
+    if (state.tool === "select" && state.selected.has(id) && event.target.closest(".node-bar")) startDrag(event, canvasApi);
   });
   layer.addEventListener("dblclick", (event) => {
     const element = event.target.closest(".board-node");
@@ -104,6 +104,7 @@ function startResize(event, node, handle, canvasApi) {
   const fixedOffset = rotateVector({ x: -signs[0] * node.w / 2, y: -signs[1] * node.h / 2 }, node.rotation || 0);
   const fixed = { x: center.x + fixedOffset.x, y: center.y + fixedOffset.y }; const ratio = node.w / node.h;
   const move = (moveEvent) => {
+    if (moveEvent.pointerId !== event.pointerId || canvasApi.isGesturing?.()) return;
     const point = canvasApi.screenToWorld({ x: moveEvent.clientX, y: moveEvent.clientY });
     const local = rotateVector({ x: point.x - fixed.x, y: point.y - fixed.y }, -(node.rotation || 0));
     let width = Math.max(90, signs[0] * local.x); let height = Math.max(80, signs[1] * local.y);
@@ -113,8 +114,8 @@ function startResize(event, node, handle, canvasApi) {
     node.w = width; node.h = height; node.x = nextCenter.x - width / 2; node.y = nextCenter.y - height / 2;
     canvasApi.queueLiveNodes([node]);
   };
-  const up = () => { document.removeEventListener("pointermove", move); commit("resize", false); canvasApi.finishLiveTransform("transform"); };
-  document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+  const up = (upEvent) => { if (upEvent.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); commit("resize", false); canvasApi.finishLiveTransform("transform"); };
+  document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
 }
 
 function startRotate(event, node, canvasApi) {
@@ -124,13 +125,14 @@ function startRotate(event, node, canvasApi) {
   const start = canvasApi.screenToWorld({ x: event.clientX, y: event.clientY });
   const startAngle = Math.atan2(start.y - center.y, start.x - center.x) * 180 / Math.PI; const original = node.rotation || 0;
   const move = (moveEvent) => {
+    if (moveEvent.pointerId !== event.pointerId || canvasApi.isGesturing?.()) return;
     const point = canvasApi.screenToWorld({ x: moveEvent.clientX, y: moveEvent.clientY });
     const angle = original + Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI - startAngle;
     node.rotation = moveEvent.shiftKey ? Math.round(angle / 15) * 15 : Math.round(angle * 10) / 10;
     canvasApi.queueLiveNodes([node]);
   };
-  const up = () => { document.removeEventListener("pointermove", move); commit("rotate", false); canvasApi.finishLiveTransform("transform"); };
-  document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+  const up = (upEvent) => { if (upEvent.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); commit("rotate", false); canvasApi.finishLiveTransform("transform"); };
+  document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
 }
 
 function startDrag(event, canvasApi) {
@@ -141,6 +143,7 @@ function startDrag(event, canvasApi) {
   snapshot();
   canvasApi.beginLiveTransform(nodes);
   const move = (moveEvent) => {
+    if (moveEvent.pointerId !== event.pointerId || canvasApi.isGesturing?.()) return;
     const point = canvasApi.screenToWorld({ x: moveEvent.clientX, y: moveEvent.clientY });
     nodes.forEach((node) => {
       const origin = origins.get(node.id);
@@ -149,14 +152,15 @@ function startDrag(event, canvasApi) {
     });
     canvasApi.queueLiveNodes(nodes);
   };
-  const up = () => {
+  const up = (upEvent) => {
+    if (upEvent.pointerId !== event.pointerId) return;
     document.removeEventListener("pointermove", move);
     document.removeEventListener("pointerup", up);
     commit("move", false);
     canvasApi.finishLiveTransform("move");
   };
   document.addEventListener("pointermove", move);
-  document.addEventListener("pointerup", up, { once: true });
+  document.addEventListener("pointerup", up);
 }
 
 export function resizeNodeToContent(id, height) {
