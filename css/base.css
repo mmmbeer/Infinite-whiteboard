@@ -24,7 +24,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .topbar {
   position: fixed; z-index: 100; inset: 0 0 auto 0; height: var(--topbar-h);
-  display: grid; grid-template-columns: 260px 1fr 260px; align-items: center;
+  display: grid; grid-template-columns: 260px 1fr 350px; align-items: center;
   padding: 0 14px; background: rgba(18,20,17,.92); border-bottom: 1px solid var(--line);
   backdrop-filter: blur(16px);
 }

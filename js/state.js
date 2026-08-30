@@ -21,11 +21,14 @@ export function emptyBoard() {
     updatedAt: Date.now(),
     viewport: { x: innerWidth / 2, y: innerHeight / 2, zoom: 1 },
     nodes: [], edges: [], groups: [], axes: [],
+    settings: { connectionType: "curved" },
   };
 }
 
 export async function loadBoard() {
   state.board = await boardDb.get("default") || emptyBoard();
+  state.board.settings = { connectionType: "curved", ...(state.board.settings || {}) };
+  state.board.nodes.forEach((node) => { if (!Number.isFinite(node.rotation)) node.rotation = 0; });
   return state.board;
 }
 
@@ -67,7 +70,7 @@ export function newNode(partial) {
   return {
     id: uid("node"), type: "text", title: "Untitled", description: "", content: "",
     x: 0, y: 0, w: 260, h: 160, category: "", tags: [], groupId: null,
-    color: "#d8ff64", createdAt: Date.now(), ...partial,
+    color: "#d8ff64", rotation: 0, createdAt: Date.now(), ...partial,
   };
 }
 export function addNode(partial) {

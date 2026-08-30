@@ -51,6 +51,16 @@ function showAxisDialog(point = canvas.viewportCenter()) {
   openModal({ title: "Add an era axis", content: form, actions: [{ label: "Cancel", onClick: () => null }, { label: "Add axis", className: "primary", onClick: (body) => { const axis = createAxis({ x: point.x, y: point.y, label: $("[data-axis-label]", body).value.trim() || "Timeline", orientation: $("[data-axis-orientation]", body).value, eras: csvList($("[data-axis-eras]", body).value) }); canvas.refresh("axis"); return axis; } }] });
 }
 
+function showSettings() {
+  const form = document.createElement("div");
+  const current = state.board.settings?.connectionType || "curved";
+  form.innerHTML = `<div class="field"><label>Connection type</label><select data-connection-type><option value="curved" ${current === "curved" ? "selected" : ""}>Curved</option><option value="straight" ${current === "straight" ? "selected" : ""}>Straight</option></select></div><p class="modal-copy">This setting applies to existing paths, new paths, connection previews, and exported screenshots.</p>`;
+  openModal({ title: "Board settings", content: form, actions: [
+    { label: "Cancel", onClick: () => null },
+    { label: "Save settings", className: "primary", onClick: (body) => { snapshot(); state.board.settings.connectionType = $("[data-connection-type]", body).value; commit("settings", false); canvas.refresh("settings"); return true; } },
+  ] });
+}
+
 function createSelectedGroup() {
   const nodeIds = [...state.selected].filter((id) => state.board.nodes.some((node) => node.id === id));
   if (!nodeIds.length) return toast("Select assets first", "Choose one or more cards, then create a group.", "error");
@@ -67,6 +77,7 @@ function bindToolbar() {
   $$(".tool").forEach((button) => button.addEventListener("click", () => setTool(button.dataset.tool)));
   $("#create-fab").onclick = () => showCreateMenu();
   $("#import-btn").onclick = () => chooseUpload(canvas.viewportCenter());
+  $("#settings-btn").onclick = showSettings;
   $("#export-btn").onclick = () => exportBoard().catch((error) => toast("Export failed", error.message, "error"));
   $("#undo-btn").onclick = () => { if (undo()) canvas.refresh("history"); };
   $("#redo-btn").onclick = () => { if (redo()) canvas.refresh("history"); };

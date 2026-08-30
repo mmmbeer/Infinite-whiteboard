@@ -18,10 +18,13 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 - Double-click, right-click, or long-press empty canvas space to create a card or era axis.
 - Drag a card by its header. Shift-click or drag-select to select several cards.
 - Choose **Connect**, then drag from one card anchor to another card anchor.
+- Drag from any selected card's anchor toward another card. The preview snaps to the nearest target anchor.
+- Select an image to reveal four resize handles and a rotation handle. Hold `Shift` while resizing to preserve its aspect ratio or while rotating to snap to 15° increments.
 - Select cards and choose **Group** or press `Ctrl/Cmd+G`.
 - Use the inspector to edit descriptions, categories, tags, groups, dimensions, text, and Markdown.
 - Choose **Capture**, then drag across a region to download a PNG automatically.
 - Choose **Export ZIP** to download `board.json`, every original asset, a full-board preview, and export notes.
+- Open **Settings** to switch all board connections between curved and straight paths.
 
 ## Keyboard shortcuts
 

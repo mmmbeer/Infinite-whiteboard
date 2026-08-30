@@ -3,7 +3,9 @@ import { state } from "./state.js";
 import { boundsOf, downloadBlob, safeName } from "./utils.js";
 
 function anchorPoint(node, anchor) {
-  return { n: [node.x + node.w / 2, node.y], e: [node.x + node.w, node.y + node.h / 2], s: [node.x + node.w / 2, node.y + node.h], w: [node.x, node.y + node.h / 2] }[anchor] || [node.x + node.w / 2, node.y + node.h / 2];
+  const center = [node.x + node.w / 2, node.y + node.h / 2]; const offset = { n: [0, -node.h / 2], e: [node.w / 2, 0], s: [0, node.h / 2], w: [-node.w / 2, 0] }[anchor] || [0, 0];
+  const radians = (node.rotation || 0) * Math.PI / 180; const cosine = Math.cos(radians); const sine = Math.sin(radians);
+  return [center[0] + offset[0] * cosine - offset[1] * sine, center[1] + offset[0] * sine + offset[1] * cosine];
 }
 
 function wrapText(context, text, x, y, maxWidth, lineHeight, maxLines = 12) {
@@ -41,12 +43,12 @@ function drawAxes(ctx) {
 
 function drawEdges(ctx) {
   const nodeMap = new Map(state.board.nodes.map((node) => [node.id, node]));
-  state.board.edges.forEach((edge) => { const from = nodeMap.get(edge.from); const to = nodeMap.get(edge.to); if (!from || !to) return; const [sx, sy] = anchorPoint(from, edge.fromAnchor); const [ex, ey] = anchorPoint(to, edge.toAnchor); const horizontal = ["e", "w"].includes(edge.fromAnchor); const distance = Math.max(70, Math.min(240, (horizontal ? Math.abs(ex - sx) : Math.abs(ey - sy)) * .45)); const offsets = { n: [0, -distance], e: [distance, 0], s: [0, distance], w: [-distance, 0] }; const a = offsets[edge.fromAnchor] || [distance, 0]; const b = offsets[edge.toAnchor] || [-distance, 0]; ctx.save(); ctx.strokeStyle = "#aab59d"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.bezierCurveTo(sx + a[0], sy + a[1], ex + b[0], ey + b[1], ex, ey); ctx.stroke(); if (edge.label) { ctx.fillStyle = "#eef2e8"; ctx.font = "12px system-ui"; ctx.fillText(edge.label, (sx + ex) / 2, (sy + ey) / 2 - 7); } ctx.restore(); });
+  state.board.edges.forEach((edge) => { const from = nodeMap.get(edge.from); const to = nodeMap.get(edge.to); if (!from || !to) return; const [sx, sy] = anchorPoint(from, edge.fromAnchor); const [ex, ey] = anchorPoint(to, edge.toAnchor); const horizontal = ["e", "w"].includes(edge.fromAnchor); const distance = Math.max(70, Math.min(240, (horizontal ? Math.abs(ex - sx) : Math.abs(ey - sy)) * .45)); const offsets = { n: [0, -distance], e: [distance, 0], s: [0, distance], w: [-distance, 0] }; const a = offsets[edge.fromAnchor] || [distance, 0]; const b = offsets[edge.toAnchor] || [-distance, 0]; ctx.save(); ctx.strokeStyle = "#aab59d"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(sx, sy); if (state.board.settings?.connectionType === "straight") ctx.lineTo(ex, ey); else ctx.bezierCurveTo(sx + a[0], sy + a[1], ex + b[0], ey + b[1], ex, ey); ctx.stroke(); if (edge.label) { ctx.fillStyle = "#eef2e8"; ctx.font = "12px system-ui"; ctx.fillText(edge.label, (sx + ex) / 2, (sy + ey) / 2 - 7); } ctx.restore(); });
 }
 
 async function drawNodes(ctx) {
   for (const node of state.board.nodes) {
-    ctx.save(); ctx.fillStyle = "#20241e"; ctx.strokeStyle = "#4b5545"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(node.x, node.y, node.w, node.h, 11); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(node.x, node.y + 32); ctx.lineTo(node.x + node.w, node.y + 32); ctx.strokeStyle = "#343a31"; ctx.stroke(); ctx.fillStyle = "#d8ff64"; ctx.font = "800 10px system-ui"; ctx.fillText(node.type.toUpperCase(), node.x + 10, node.y + 20); ctx.fillStyle = "#d9ded4"; ctx.font = "650 12px system-ui"; ctx.fillText(node.title.slice(0, 34), node.x + 68, node.y + 20);
+    ctx.save(); const center = { x: node.x + node.w / 2, y: node.y + node.h / 2 }; ctx.translate(center.x, center.y); ctx.rotate((node.rotation || 0) * Math.PI / 180); ctx.translate(-center.x, -center.y); ctx.fillStyle = "#20241e"; ctx.strokeStyle = "#4b5545"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(node.x, node.y, node.w, node.h, 11); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(node.x, node.y + 32); ctx.lineTo(node.x + node.w, node.y + 32); ctx.strokeStyle = "#343a31"; ctx.stroke(); ctx.fillStyle = "#d8ff64"; ctx.font = "800 10px system-ui"; ctx.fillText(node.type.toUpperCase(), node.x + 10, node.y + 20); ctx.fillStyle = "#d9ded4"; ctx.font = "650 12px system-ui"; ctx.fillText(node.title.slice(0, 34), node.x + 68, node.y + 20);
     if (node.type === "image") { const image = await loadAssetImage(node.assetId); if (image) { const available = node.h - 32; const ratio = Math.max(node.w / image.width, available / image.height); const sw = node.w / ratio; const sh = available / ratio; const sx = (image.width - sw) / 2; const sy = (image.height - sh) / 2; ctx.drawImage(image, sx, sy, sw, sh, node.x, node.y + 32, node.w, available); image.close?.(); } }
     else { ctx.fillStyle = "#e8ece4"; ctx.font = "13px system-ui"; wrapText(ctx, node.content, node.x + 13, node.y + 54, node.w - 26, 19, Math.floor((node.h - 48) / 19)); }
     ctx.restore();
@@ -67,4 +69,5 @@ export async function captureRegion(region) {
   const blob = await renderRegion(region); downloadBlob(blob, `${safeName(state.board.title)}-capture.png`); return blob;
 }
 
-export function boardBounds() { return boundsOf([...state.board.nodes, ...state.board.groups, ...state.board.axes.map((axis) => ({ x: axis.x, y: axis.y, w: axis.orientation === "x" ? axis.length : 150, h: axis.orientation === "y" ? axis.length : 90 }))], 80); }
+function visualNodeBounds(node) { const radians = (node.rotation || 0) * Math.PI / 180; const cosine = Math.abs(Math.cos(radians)); const sine = Math.abs(Math.sin(radians)); const width = node.w * cosine + node.h * sine; const height = node.w * sine + node.h * cosine; return { x: node.x + node.w / 2 - width / 2, y: node.y + node.h / 2 - height / 2, w: width, h: height }; }
+export function boardBounds() { return boundsOf([...state.board.nodes.map(visualNodeBounds), ...state.board.groups, ...state.board.axes.map((axis) => ({ x: axis.x, y: axis.y, w: axis.orientation === "x" ? axis.length : 150, h: axis.orientation === "y" ? axis.length : 90 }))], 80); }

@@ -1,7 +1,7 @@
 import { $, $$, boundsOf, clamp, rectsIntersect } from "./utils.js";
 import { state, commit, snapshot } from "./state.js";
 import { renderNodes, bindNodeInteractions } from "./nodes.js";
-import { bindEdgeInteractions, createEdge, getAnchorPoint, renderEdges } from "./connections.js";
+import { bindEdgeInteractions, createEdge, getAnchorPoint, getClosestAnchor, renderEdges } from "./connections.js";
 import { bindGroupInteractions, renderGroups, updateGroupBounds } from "./groups.js";
 import { bindAxisInteractions, renderAxes } from "./axes.js";
 
@@ -47,10 +47,10 @@ export class InfiniteCanvas {
     this.updateMinimap();
   }
   async refresh(reason = "render") {
+    if (["move", "transform-live", "transform"].includes(reason)) state.board.groups.forEach((group) => updateGroupBounds(group.id));
     renderGroups(this.groupsLayer); renderAxes(this.axesLayer); renderEdges(this.edgesLayer, this.preview);
     await renderNodes(this.nodesLayer); this.world.classList.toggle("connect-mode", state.tool === "connect");
-    if (reason === "move") state.board.groups.forEach((group) => updateGroupBounds(group.id));
-    this.updateMinimap(); if (reason !== "inspector-live") this.onSelection?.();
+    this.updateMinimap(); if (!["inspector-live", "transform-live"].includes(reason)) this.onSelection?.();
   }
   refreshSelection() { this.refresh("selection"); }
 
@@ -111,17 +111,31 @@ export class InfiniteCanvas {
   }
 
   startConnection(event, nodeId, anchor) {
-    if (state.tool !== "connect") return;
     event.preventDefault(); event.stopPropagation(); const start = getAnchorPoint(nodeId, anchor);
-    const move = (e) => { this.preview = { start, end: this.screenToWorld({ x: e.clientX, y: e.clientY }), anchor }; renderEdges(this.edgesLayer, this.preview); };
-    const up = (e) => {
+    const move = (e) => {
+      const point = this.screenToWorld({ x: e.clientX, y: e.clientY });
+      const targetElement = document.elementFromPoint(e.clientX, e.clientY)?.closest(".board-node");
+      const targetId = targetElement?.dataset.id;
+      const snap = targetId && targetId !== nodeId ? getClosestAnchor(targetId, point) : null;
+      this.setConnectionSnap(snap ? { nodeId: targetId, anchor: snap.anchor } : null);
+      this.preview = { start, end: snap?.point || point, anchor, toAnchor: snap?.anchor || "w" };
+      renderEdges(this.edgesLayer, this.preview);
+    };
+    const up = () => {
       document.removeEventListener("pointermove", move); this.preview = null;
-      const targetAnchor = document.elementFromPoint(e.clientX, e.clientY)?.closest(".anchor");
-      const targetNode = targetAnchor?.closest(".board-node");
-      if (targetNode) createEdge(nodeId, targetNode.dataset.id, anchor, targetAnchor.dataset.anchor);
+      if (this.connectionSnap) createEdge(nodeId, this.connectionSnap.nodeId, anchor, this.connectionSnap.anchor);
+      this.setConnectionSnap(null);
       this.refresh("connection");
     };
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
+  }
+
+  setConnectionSnap(target) {
+    this.nodesLayer.querySelectorAll(".connection-target,.snap-target").forEach((element) => element.classList.remove("connection-target", "snap-target"));
+    this.connectionSnap = target;
+    if (!target) return;
+    const node = this.nodesLayer.querySelector(`[data-id="${target.nodeId}"]`); node?.classList.add("connection-target");
+    node?.querySelector(`[data-anchor="${target.anchor}"]`)?.classList.add("snap-target");
   }
 
   startCapture(event) {
