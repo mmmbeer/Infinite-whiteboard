@@ -29,7 +29,7 @@ export const boundsOf = (items, padding = 0) => {
   const bottom = Math.max(...items.map((item) => item.y + (item.h || 0)));
   return { x: left - padding, y: top - padding, w: right - left + padding * 2, h: bottom - top + padding * 2 };
 };
-export const colorFor = (index = 0) => ["#d8ff64", "#75d7ff", "#ff9f68", "#d99cff", "#68e1b4", "#ff7f9e"][index % 6];
+export const colorFor = (index = 0) => ["#ff715b", "#8b2635", "#cbd2d0", "#fffdfd"][index % 4];
 export const fileBase = (name = "Untitled") => name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
 export const safeName = (name = "whiteboard") => name.trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "whiteboard";
 export const isTypingTarget = (target) => ["INPUT", "TEXTAREA", "SELECT"].includes(target?.tagName) || target?.isContentEditable;

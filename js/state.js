@@ -5,6 +5,14 @@ const listeners = new Set();
 const history = [];
 const future = [];
 let saveListener = () => {};
+const legacyPalette = new Map([
+  ["#d8ff64", "#ff715b"],
+  ["#75d7ff", "#cbd2d0"],
+  ["#ff9f68", "#ff715b"],
+  ["#d99cff", "#8b2635"],
+  ["#68e1b4", "#cbd2d0"],
+  ["#ff7f9e", "#8b2635"],
+]);
 
 export const state = {
   board: null,
@@ -28,7 +36,13 @@ export function emptyBoard() {
 export async function loadBoard() {
   state.board = await boardDb.get("default") || emptyBoard();
   state.board.settings = { connectionType: "curved", ...(state.board.settings || {}) };
-  state.board.nodes.forEach((node) => { if (!Number.isFinite(node.rotation)) node.rotation = 0; });
+  state.board.nodes.forEach((node) => {
+    if (!Number.isFinite(node.rotation)) node.rotation = 0;
+    node.color = legacyPalette.get(node.color?.toLowerCase()) || node.color || "#ff715b";
+  });
+  [...state.board.groups, ...state.board.axes].forEach((item) => {
+    item.color = legacyPalette.get(item.color?.toLowerCase()) || item.color;
+  });
   return state.board;
 }
 
@@ -70,7 +84,7 @@ export function newNode(partial) {
   return {
     id: uid("node"), type: "text", title: "Untitled", description: "", content: "",
     x: 0, y: 0, w: 260, h: 160, category: "", tags: [], groupId: null,
-    color: "#d8ff64", rotation: 0, createdAt: Date.now(), ...partial,
+    color: "#ff715b", rotation: 0, createdAt: Date.now(), ...partial,
   };
 }
 export function addNode(partial) {

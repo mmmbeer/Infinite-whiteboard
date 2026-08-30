@@ -1,6 +1,6 @@
 import { $, $$, boundsOf, clamp, rectsIntersect } from "./utils.js";
 import { state, commit, snapshot } from "./state.js";
-import { renderNodes, bindNodeInteractions } from "./nodes.js";
+import { renderNodes, bindNodeInteractions, updateNodeFrame } from "./nodes.js";
 import { bindEdgeInteractions, createEdge, getAnchorPoint, getClosestAnchor, renderEdges } from "./connections.js";
 import { bindGroupInteractions, renderGroups, updateGroupBounds } from "./groups.js";
 import { bindAxisInteractions, renderAxes } from "./axes.js";
@@ -13,6 +13,7 @@ export class InfiniteCanvas {
     this.selectionBox = $("#selection-box"); this.captureBox = $("#capture-box");
     this.onSelection = onSelection; this.onCreate = onCreate; this.onCapture = onCapture; this.onEditNode = onEditNode;
     this.preview = null; this.drag = null; this.longPress = null;
+    this.liveFrame = null; this.liveNodeIds = new Set(); this.liveGroups = new Set(); this.liveAxes = new Set();
   }
 
   init() {
@@ -44,15 +45,79 @@ export class InfiniteCanvas {
     const view = state.board.viewport;
     this.world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`;
     $("#zoom-value").textContent = `${Math.round(view.zoom * 100)}%`;
-    this.updateMinimap();
+    this.updateMinimapWindow();
   }
   async refresh(reason = "render") {
     if (["move", "transform-live", "transform"].includes(reason)) state.board.groups.forEach((group) => updateGroupBounds(group.id));
+    if (reason === "selection") {
+      this.syncSelection();
+      renderEdges(this.edgesLayer, this.preview);
+      this.onSelection?.();
+      return;
+    }
     renderGroups(this.groupsLayer); renderAxes(this.axesLayer); renderEdges(this.edgesLayer, this.preview);
     await renderNodes(this.nodesLayer); this.world.classList.toggle("connect-mode", state.tool === "connect");
     this.updateMinimap(); if (!["inspector-live", "transform-live"].includes(reason)) this.onSelection?.();
   }
   refreshSelection() { this.refresh("selection"); }
+
+  syncSelection() {
+    this.nodesLayer.querySelectorAll(".board-node").forEach((element) => element.classList.toggle("selected", state.selected.has(element.dataset.id)));
+    this.groupsLayer.querySelectorAll(".group-box").forEach((element) => element.classList.toggle("selected", state.selected.has(element.dataset.id)));
+    this.axesLayer.querySelectorAll(".axis").forEach((element) => element.classList.toggle("selected", state.selected.has(element.dataset.id)));
+  }
+
+  beginLiveTransform(nodes = []) {
+    nodes.forEach((node) => this.nodesLayer.querySelector(`[data-id="${node.id}"]`)?.classList.add("is-dragging"));
+  }
+
+  queueLiveNodes(nodes = []) {
+    nodes.forEach((node) => {
+      this.liveNodeIds.add(node.id);
+      if (node.groupId) this.liveGroups.add(node.groupId);
+    });
+    this.queueLiveFrame();
+  }
+
+  queueLiveItem(item, members = []) {
+    if (state.board.groups.includes(item)) this.liveGroups.add(item.id);
+    if (state.board.axes.includes(item)) this.liveAxes.add(item.id);
+    members.forEach((node) => this.liveNodeIds.add(node.id));
+    this.queueLiveFrame();
+  }
+
+  queueLiveFrame() {
+    if (this.liveFrame) return;
+    this.liveFrame = requestAnimationFrame(() => this.flushLiveFrame());
+  }
+
+  flushLiveFrame() {
+    this.liveFrame = null;
+    this.liveNodeIds.forEach((id) => {
+      const node = state.board.nodes.find((item) => item.id === id);
+      updateNodeFrame(this.nodesLayer.querySelector(`[data-id="${id}"]`), node);
+    });
+    this.liveGroups.forEach((id) => {
+      updateGroupBounds(id);
+      const group = state.board.groups.find((item) => item.id === id);
+      const element = this.groupsLayer.querySelector(`[data-id="${id}"]`);
+      if (group && element) Object.assign(element.style, { left: `${group.x}px`, top: `${group.y}px`, width: `${group.w}px`, height: `${group.h}px` });
+    });
+    this.liveAxes.forEach((id) => {
+      const axis = state.board.axes.find((item) => item.id === id);
+      const element = this.axesLayer.querySelector(`[data-id="${id}"]`);
+      if (axis && element) Object.assign(element.style, { left: `${axis.x}px`, top: `${axis.y}px` });
+    });
+    if (this.liveNodeIds.size) renderEdges(this.edgesLayer, this.preview);
+    this.liveNodeIds.clear(); this.liveGroups.clear(); this.liveAxes.clear();
+  }
+
+  finishLiveTransform(reason) {
+    if (this.liveFrame) { cancelAnimationFrame(this.liveFrame); this.liveFrame = null; }
+    this.flushLiveFrame();
+    this.nodesLayer.querySelectorAll(".is-dragging").forEach((element) => element.classList.remove("is-dragging"));
+    this.refresh(reason);
+  }
 
   setTool(tool) {
     state.tool = tool; $$(".tool").forEach((button) => button.classList.toggle("active", button.dataset.tool === tool));
@@ -91,9 +156,9 @@ export class InfiniteCanvas {
       const a = this.screenToWorld({ x: rect.x, y: rect.y }); const b = this.screenToWorld({ x: rect.x + rect.w, y: rect.y + rect.h });
       state.selected.clear();
       state.board.nodes.filter((node) => rectsIntersect({ x: node.x, y: node.y, w: node.w, h: node.h }, { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y })).forEach((node) => state.selected.add(node.id));
-      this.refreshSelection();
+      this.syncSelection();
     };
-    const up = () => { document.removeEventListener("pointermove", move); this.selectionBox.classList.add("hidden"); this.cancelLongPress(); if (!moved) this.refreshSelection(); };
+    const up = () => { document.removeEventListener("pointermove", move); this.selectionBox.classList.add("hidden"); this.cancelLongPress(); this.refreshSelection(); };
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
   }
 
@@ -105,8 +170,9 @@ export class InfiniteCanvas {
     const start = this.screenToWorld({ x: event.clientX, y: event.clientY }); const origin = { x: item.x, y: item.y };
     const members = group ? state.board.nodes.filter((node) => node.groupId === group.id) : [];
     const memberOrigins = new Map(members.map((node) => [node.id, { x: node.x, y: node.y }]));
-    const move = (e) => { const point = this.screenToWorld({ x: e.clientX, y: e.clientY }); const dx = point.x - start.x; const dy = point.y - start.y; item.x = origin.x + dx; item.y = origin.y + dy; members.forEach((node) => { const base = memberOrigins.get(node.id); node.x = base.x + dx; node.y = base.y + dy; }); this.refresh("move-item"); };
-    const up = () => { document.removeEventListener("pointermove", move); commit("move-item", false); };
+    this.beginLiveTransform(members);
+    const move = (e) => { const point = this.screenToWorld({ x: e.clientX, y: e.clientY }); const dx = point.x - start.x; const dy = point.y - start.y; item.x = origin.x + dx; item.y = origin.y + dy; members.forEach((node) => { const base = memberOrigins.get(node.id); node.x = base.x + dx; node.y = base.y + dy; }); this.queueLiveItem(item, members); };
+    const up = () => { document.removeEventListener("pointermove", move); commit("move-item", false); this.finishLiveTransform(group ? "move" : "move-item"); };
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
   }
 
@@ -171,6 +237,13 @@ export class InfiniteCanvas {
     const items = [...state.board.nodes, ...state.board.groups]; const bounds = boundsOf(items, 120); const scale = Math.min(140 / bounds.w, 84 / bounds.h);
     state.board.groups.forEach((item) => this.addMinimapItem(map, item, bounds, scale, "minimap-group"));
     state.board.nodes.forEach((item) => this.addMinimapItem(map, item, bounds, scale, "minimap-node"));
+    this.updateMinimapWindow(bounds, scale);
+  }
+  updateMinimapWindow(providedBounds, providedScale) {
+    const map = $("#minimap"); if (!map) return;
+    const items = [...state.board.nodes, ...state.board.groups];
+    const bounds = providedBounds || boundsOf(items, 120);
+    const scale = providedScale || Math.min(140 / bounds.w, 84 / bounds.h);
     const rect = this.viewport.getBoundingClientRect(); const view = state.board.viewport; const visible = { x: -view.x / view.zoom, y: -view.y / view.zoom, w: rect.width / view.zoom, h: rect.height / view.zoom };
     const windowEl = $("#minimap-window"); Object.assign(windowEl.style, { left: `${5 + (visible.x - bounds.x) * scale}px`, top: `${5 + (visible.y - bounds.y) * scale}px`, width: `${Math.max(3, visible.w * scale)}px`, height: `${Math.max(3, visible.h * scale)}px` });
   }

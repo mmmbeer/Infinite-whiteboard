@@ -4,6 +4,7 @@ import { state, getNode, commit, snapshot } from "./state.js";
 import { $, escapeHtml } from "./utils.js";
 
 const objectUrls = new Map();
+const renderedNodeState = new WeakMap();
 
 async function imageUrl(assetId) {
   if (!assetId) return "";
@@ -23,30 +24,39 @@ function bodyHtml(node) {
 
 const transformHandles = () => `${["nw", "ne", "se", "sw"].map((handle) => `<button class="image-transform-handle resize-handle" data-resize="${handle}" aria-label="Resize image from ${handle}"></button>`).join("")}<button class="image-transform-handle rotate-handle" aria-label="Rotate image"></button>`;
 
+function contentChanged(node) {
+  const previous = renderedNodeState.get(node);
+  const tags = node.tags?.join("\u001f") || "";
+  const next = { type: node.type, title: node.title, content: node.content, description: node.description, tags, assetId: node.assetId };
+  renderedNodeState.set(node, next);
+  return !previous || Object.keys(next).some((key) => previous[key] !== next[key]);
+}
+
+export function updateNodeFrame(element, node) {
+  if (!element || !node) return;
+  element.style.width = `${node.w}px`;
+  element.style.height = `${node.h}px`;
+  element.style.transform = `translate3d(${node.x}px, ${node.y}px, 0) rotate(${node.rotation || 0}deg)`;
+}
+
 export async function renderNodes(layer) {
   const existing = new Map([...layer.children].map((element) => [element.dataset.id, element]));
   for (const node of state.board.nodes) {
     let element = existing.get(node.id);
-    const signature = JSON.stringify([node.type, node.title, node.content, node.description, node.tags, node.assetId]);
     if (!element) {
       element = document.createElement("article");
       element.className = "board-node";
       element.dataset.id = node.id;
       layer.append(element);
     }
-    if (element.dataset.signature !== signature) {
-      element.dataset.signature = signature;
+    if (contentChanged(node)) {
       element.innerHTML = `<header class="node-bar"><span class="node-kind">${escapeHtml(node.type)}</span><span class="node-title">${escapeHtml(node.title)}</span></header><div class="node-body">${bodyHtml(node)}${node.tags?.length ? `<div class="node-tags">${node.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : ""}</div>${["n", "e", "s", "w"].map((anchor) => `<button class="anchor" data-anchor="${anchor}" aria-label="Connect from ${anchor}"></button>`).join("")}${node.type === "image" ? transformHandles() : ""}`;
       if (node.type === "image") {
         const image = $("img", element);
         imageUrl(node.assetId).then((url) => { if (url) image.src = url; });
       }
     }
-    element.style.left = `${node.x}px`;
-    element.style.top = `${node.y}px`;
-    element.style.width = `${node.w}px`;
-    element.style.height = `${node.h}px`;
-    element.style.transform = `rotate(${node.rotation || 0}deg)`;
+    updateNodeFrame(element, node);
     element.classList.toggle("selected", state.selected.has(node.id));
     existing.delete(node.id);
   }
@@ -87,6 +97,7 @@ function rotateVector(point, degrees) {
 
 function startResize(event, node, handle, canvasApi) {
   if (!node) return; event.preventDefault(); event.stopPropagation(); snapshot();
+  canvasApi.beginLiveTransform([node]);
   const signs = { nw: [-1, -1], ne: [1, -1], se: [1, 1], sw: [-1, 1] }[handle];
   const center = { x: node.x + node.w / 2, y: node.y + node.h / 2 };
   const fixedOffset = rotateVector({ x: -signs[0] * node.w / 2, y: -signs[1] * node.h / 2 }, node.rotation || 0);
@@ -99,14 +110,15 @@ function startResize(event, node, handle, canvasApi) {
     const centerOffset = rotateVector({ x: signs[0] * width / 2, y: signs[1] * height / 2 }, node.rotation || 0);
     const nextCenter = { x: fixed.x + centerOffset.x, y: fixed.y + centerOffset.y };
     node.w = width; node.h = height; node.x = nextCenter.x - width / 2; node.y = nextCenter.y - height / 2;
-    canvasApi.refresh("transform-live");
+    canvasApi.queueLiveNodes([node]);
   };
-  const up = () => { document.removeEventListener("pointermove", move); commit("resize", false); canvasApi.refresh("transform"); };
+  const up = () => { document.removeEventListener("pointermove", move); commit("resize", false); canvasApi.finishLiveTransform("transform"); };
   document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
 }
 
 function startRotate(event, node, canvasApi) {
   if (!node) return; event.preventDefault(); event.stopPropagation(); snapshot();
+  canvasApi.beginLiveTransform([node]);
   const center = { x: node.x + node.w / 2, y: node.y + node.h / 2 };
   const start = canvasApi.screenToWorld({ x: event.clientX, y: event.clientY });
   const startAngle = Math.atan2(start.y - center.y, start.x - center.x) * 180 / Math.PI; const original = node.rotation || 0;
@@ -114,9 +126,9 @@ function startRotate(event, node, canvasApi) {
     const point = canvasApi.screenToWorld({ x: moveEvent.clientX, y: moveEvent.clientY });
     const angle = original + Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI - startAngle;
     node.rotation = moveEvent.shiftKey ? Math.round(angle / 15) * 15 : Math.round(angle * 10) / 10;
-    canvasApi.refresh("transform-live");
+    canvasApi.queueLiveNodes([node]);
   };
-  const up = () => { document.removeEventListener("pointermove", move); commit("rotate", false); canvasApi.refresh("transform"); };
+  const up = () => { document.removeEventListener("pointermove", move); commit("rotate", false); canvasApi.finishLiveTransform("transform"); };
   document.addEventListener("pointermove", move); document.addEventListener("pointerup", up, { once: true });
 }
 
@@ -126,6 +138,7 @@ function startDrag(event, canvasApi) {
   const nodes = [...state.selected].map(getNode).filter(Boolean);
   const origins = new Map(nodes.map((node) => [node.id, { x: node.x, y: node.y }]));
   snapshot();
+  canvasApi.beginLiveTransform(nodes);
   const move = (moveEvent) => {
     const point = canvasApi.screenToWorld({ x: moveEvent.clientX, y: moveEvent.clientY });
     nodes.forEach((node) => {
@@ -133,12 +146,13 @@ function startDrag(event, canvasApi) {
       node.x = origin.x + point.x - start.x;
       node.y = origin.y + point.y - start.y;
     });
-    canvasApi.refresh("move");
+    canvasApi.queueLiveNodes(nodes);
   };
   const up = () => {
     document.removeEventListener("pointermove", move);
     document.removeEventListener("pointerup", up);
     commit("move", false);
+    canvasApi.finishLiveTransform("move");
   };
   document.addEventListener("pointermove", move);
   document.addEventListener("pointerup", up, { once: true });

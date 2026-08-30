@@ -1,19 +1,21 @@
 :root {
-  --ink: #f4f8fc;
-  --ink-soft: #d4dde7;
-  --muted: #91a0b0;
-  --muted-2: #637181;
-  --canvas: #070a0f;
-  --panel: #0d1218;
-  --panel-2: #121922;
-  --panel-3: #18212b;
-  --line: #25313d;
-  --line-strong: #405163;
-  --accent: #27e4ff;
-  --accent-soft: rgba(39, 228, 255, .12);
-  --accent-ink: #001317;
-  --danger: #ff647c;
-  --success: #49e6a2;
+  --ink: #fffdfd;
+  --ink-soft: #eef1f0;
+  --muted: #cbd2d0;
+  --muted-2: #98a29f;
+  --canvas: #202623;
+  --panel: #2e3532;
+  --panel-2: #343c38;
+  --panel-3: #3b4540;
+  --line: #505b56;
+  --line-strong: #7b8782;
+  --accent: #ff715b;
+  --accent-hover: #ff8b79;
+  --accent-soft: rgba(255, 113, 91, .13);
+  --accent-ink: #2e3532;
+  --danger: #8b2635;
+  --danger-soft: rgba(139, 38, 53, .22);
+  --success: #cbd2d0;
   --shadow: 0 14px 42px rgba(0, 0, 0, .45);
   --topbar-h: 52px;
   --radius: 3px;
@@ -43,8 +45,8 @@ select:focus-visible {
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { border: 2px solid transparent; background: #344352; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background: #4c6174; background-clip: padding-box; }
+::-webkit-scrollbar-thumb { border: 2px solid transparent; background: #68736e; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #89938f; background-clip: padding-box; }
 
 .topbar {
   position: fixed;
@@ -57,7 +59,7 @@ select:focus-visible {
   gap: 12px;
   padding: 0 10px;
   border-bottom: 1px solid var(--line);
-  background: rgba(8, 12, 17, .96);
+  background: rgba(46, 53, 50, .97);
   box-shadow: 0 1px 0 rgba(255, 255, 255, .02);
   backdrop-filter: blur(18px) saturate(120%);
 }
@@ -81,13 +83,13 @@ select:focus-visible {
   width: 29px;
   height: 29px;
   flex: 0 0 29px;
-  border: 1px solid rgba(39, 228, 255, .62);
+  border: 1px solid rgba(255, 113, 91, .72);
   color: var(--accent);
-  background: rgba(39, 228, 255, .07);
+  background: rgba(255, 113, 91, .08);
   font-size: 21px;
   font-weight: 500;
   line-height: 1;
-  box-shadow: inset 0 0 12px rgba(39, 228, 255, .05);
+  box-shadow: inset 0 0 12px rgba(255, 113, 91, .06);
 }
 
 .brand-mark::after {
@@ -141,7 +143,7 @@ select:focus-visible {
   width: 5px;
   height: 5px;
   background: var(--success);
-  box-shadow: 0 0 7px rgba(73, 230, 162, .55);
+  box-shadow: 0 0 7px rgba(203, 210, 208, .4);
 }
 
 .save-status.saving::before { background: var(--accent); animation: pulse .8s infinite; }
@@ -163,11 +165,11 @@ select:focus-visible {
 .button:hover { border-color: var(--line-strong); color: var(--ink); background: var(--panel-3); }
 .button:active { transform: translateY(1px); }
 .button.primary { border-color: var(--accent); color: var(--accent-ink); background: var(--accent); font-weight: 780; }
-.button.primary:hover { border-color: #8df2ff; background: #8df2ff; }
+.button.primary:hover { border-color: var(--accent-hover); background: var(--accent-hover); }
 .button.ghost { width: 30px; padding: 0; color: var(--muted); background: transparent; font-size: 17px; }
 .button.ghost:hover { color: var(--accent); background: var(--accent-soft); }
-.button.danger { color: #ffb9c3; border-color: rgba(255, 100, 124, .36); background: rgba(255, 100, 124, .07); }
-.button.danger:hover { color: #fff; border-color: var(--danger); background: rgba(255, 100, 124, .14); }
+.button.danger { color: #fffdfd; border-color: #a84050; background: var(--danger-soft); }
+.button.danger:hover { color: #fffdfd; border-color: #bd5362; background: var(--danger); }
 .button:disabled { opacity: .35; cursor: not-allowed; transform: none; }
 
 @keyframes pulse { 50% { opacity: .25; box-shadow: none; } }
