@@ -24,7 +24,7 @@ export function openModal({ title, content, actions = [], onClose }) {
     document.removeEventListener("keydown", onKey);
     onClose?.(value);
   };
-  const onKey = (event) => event.key === "Escape" && close(null);
+  const onKey = (event) => event.key === "Escape" && backdrop === modalRoot().lastElementChild && close(null);
   $(".modal-close", backdrop).onclick = () => close(null);
   backdrop.onclick = (event) => event.target === backdrop && close(null);
   actions.forEach((action, index) => {

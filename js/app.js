@@ -5,6 +5,7 @@ import { exportBoard } from "./exporter.js";
 import { createGroup } from "./groups.js";
 import { importFiles } from "./importer.js";
 import { editTextNode, renderInspector } from "./inspector.js";
+import { openMarkdownEditor } from "./markdown-editor.js";
 import { captureRegion } from "./screenshot.js";
 import { addNode, commit, getNode, loadBoard, onSaveStatus, redo, removeSelected, snapshot, state, subscribe, undo } from "./state.js";
 import { closeContextMenu, openContextMenu, openModal, promptDialog, toast } from "./ui.js";
@@ -27,7 +28,9 @@ function selectNode(node) {
 }
 
 async function createText(point, type = "text") {
-  const content = await promptDialog({ title: type === "markdown" ? "Create Markdown card" : "Create text card", label: type === "markdown" ? "Markdown" : "Text", multiline: true, placeholder: type === "markdown" ? "# Heading\n\nWrite with **Markdown**" : "Write a note…", confirmLabel: "Create" });
+  const content = type === "markdown"
+    ? await openMarkdownEditor({ title: "Create Markdown card", confirmLabel: "Create" })
+    : await promptDialog({ title: "Create text card", label: "Text", multiline: true, placeholder: "Write a note…", confirmLabel: "Create" });
   if (content === null) return;
   const firstLine = content.split("\n").find((line) => line.trim())?.replace(/^#+\s*/, "").slice(0, 42) || "Untitled";
   const node = addNode({ type, title: firstLine, content, x: point.x, y: point.y, w: 300, h: 180 }); selectNode(node);

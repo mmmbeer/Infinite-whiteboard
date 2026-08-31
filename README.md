@@ -23,7 +23,7 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 - Drag from any selected card's anchor toward another card. The preview snaps to the nearest target anchor.
 - Select an image to reveal four resize handles and a rotation handle. Hold `Shift` while resizing to preserve its aspect ratio or while rotating to snap to 15° increments.
 - Select cards and choose **Group** or press `Ctrl/Cmd+G`.
-- Use the inspector to edit descriptions, categories, tags, groups, dimensions, text, and Markdown.
+- Use the inspector to edit descriptions, categories, tags, groups, dimensions, and text. Markdown cards open a full editor with visual and source modes, formatting controls, tables, task lists, quotes, code blocks, links, and keyboard formatting shortcuts.
 - Choose **Capture**, then drag across a region to download a PNG automatically.
 - Choose **Export ZIP** to download `board.json`, every original asset, a full-board preview, and export notes.
 - Open **Boards** to create, switch, duplicate, archive, or delete local boards. Restore an exported ZIP as a new board, merge it into the current board, or replace the current board.
@@ -52,7 +52,8 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 | `Ctrl/Cmd+D` | Duplicate selection |
 | `Ctrl/Cmd+G` | Group selection |
 | `Ctrl/Cmd+Shift+G` | Ungroup selection |
-| `Ctrl/Cmd+K` | Find and navigate to board content |
+| `Ctrl/Cmd+K` | Add a link in the Markdown editor; otherwise find board content |
+| `Ctrl/Cmd+B / I` | Bold / italic in the Markdown editor |
 | `Space` + drag | Temporarily pan |
 | `Delete` | Delete selection |
 | `Enter` | Edit the selected text or Markdown card |
@@ -71,6 +72,7 @@ Run the regression checks with:
 
 ```bash
 node tests/clipboard.test.mjs
+node tests/markdown.test.mjs
 node tests/restore.test.mjs
 node tests/search.test.mjs
 node tests/state.test.mjs

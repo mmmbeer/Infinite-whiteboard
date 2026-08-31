@@ -1,6 +1,8 @@
 import { state, commit, snapshot } from "./state.js";
 import { $, csvList, escapeHtml } from "./utils.js";
 import { confirmDialog, promptDialog } from "./ui.js";
+import { renderMarkdown } from "./markdown.js";
+import { openMarkdownEditor } from "./markdown-editor.js";
 
 function findSelected() {
   const id = [...state.selected][0];
@@ -21,7 +23,10 @@ function field(label, key, value, multiline = false) {
 
 function nodeInspector(node) {
   const groups = state.board.groups.map((group) => `<option value="${group.id}" ${node.groupId === group.id ? "selected" : ""}>${escapeHtml(group.title)}</option>`).join("");
-  return `<header class="inspector-head"><h2>${escapeHtml(node.type)} asset</h2><span class="node-kind">${escapeHtml(node.type)}</span></header><section class="inspector-section">${field("Title", "title", node.title)}${field("Description", "description", node.description, true)}${node.type !== "image" ? field(node.type === "markdown" ? "Markdown" : "Text", "content", node.content, true) : ""}</section><section class="inspector-section">${field("Category", "category", node.category)}${field("Tags — comma separated", "tags", node.tags?.join(", "))}<div class="field"><label>Group</label><select data-field="groupId"><option value="">No group</option>${groups}</select></div></section><section class="inspector-section"><div class="field-row">${field("Width", "w", node.w)}${field("Height", "h", node.h)}</div></section><div class="inspector-actions"><button class="button" data-duplicate>Duplicate</button><button class="button danger" data-delete>Delete</button></div>`;
+  const content = node.type === "markdown"
+    ? `<div class="field"><label>Markdown</label><div class="markdown-inspector-preview node-markdown">${renderMarkdown(node.content)}</div><button class="button markdown-edit-button" data-edit-markdown>Edit Markdown</button></div>`
+    : node.type !== "image" ? field("Text", "content", node.content, true) : "";
+  return `<header class="inspector-head"><h2>${escapeHtml(node.type)} asset</h2><span class="node-kind">${escapeHtml(node.type)}</span></header><section class="inspector-section">${field("Title", "title", node.title)}${field("Description", "description", node.description, true)}${content}</section><section class="inspector-section">${field("Category", "category", node.category)}${field("Tags — comma separated", "tags", node.tags?.join(", "))}<div class="field"><label>Group</label><select data-field="groupId"><option value="">No group</option>${groups}</select></div></section><section class="inspector-section"><div class="field-row">${field("Width", "w", node.w)}${field("Height", "h", node.h)}</div></section><div class="inspector-actions"><button class="button" data-duplicate>Duplicate</button><button class="button danger" data-delete>Delete</button></div>`;
 }
 
 function groupInspector(group) {
@@ -65,10 +70,13 @@ export function renderInspector(root, onChange, onDelete, onDuplicate) {
   $("[data-duplicate]", root)?.addEventListener("click", () => {
     onDuplicate?.();
   });
+  $("[data-edit-markdown]", root)?.addEventListener("click", () => editTextNode(item, onChange));
 }
 
 export async function editTextNode(node, onChange) {
-  const value = await promptDialog({ title: node.type === "markdown" ? "Edit Markdown" : "Edit text", label: node.type === "markdown" ? "Markdown" : "Text", value: node.content, multiline: true, confirmLabel: "Update" });
+  const value = node.type === "markdown"
+    ? await openMarkdownEditor({ title: "Edit Markdown", value: node.content, confirmLabel: "Update" })
+    : await promptDialog({ title: "Edit text", label: "Text", value: node.content, multiline: true, confirmLabel: "Update" });
   if (value === null) return;
   snapshot(); node.content = value; commit("edit", false); onChange();
 }

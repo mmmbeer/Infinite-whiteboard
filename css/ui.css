@@ -226,6 +226,41 @@
 .modal-copy { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 5px; padding: 9px 10px; border-top: 1px solid var(--line); }
 
+.markdown-editor-modal { width: min(860px, 100%); max-height: min(820px, 94vh); overflow: hidden; }
+.markdown-editor-modal .modal-body { padding: 0; overflow: hidden; }
+.markdown-editor-modal .modal-actions { background: #29302d; }
+.markdown-editor { display: grid; grid-template-rows: auto auto minmax(280px, 1fr); min-height: min(570px, calc(94vh - 104px)); }
+.markdown-editor-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: #29302d; }
+.markdown-modes { display: inline-flex; border: 1px solid var(--line-strong); }
+.markdown-modes button { min-width: 68px; height: 28px; padding: 0 9px; border: 0; border-right: 1px solid var(--line); color: var(--muted); background: #252b28; font-size: 10px; font-weight: 720; cursor: pointer; }
+.markdown-modes button:last-child { border-right: 0; }
+.markdown-modes button:hover { color: var(--ink); }
+.markdown-modes button.active { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
+.markdown-editor-hint { color: var(--muted-2); font-size: 9px; }
+.markdown-toolbar { display: flex; flex-wrap: wrap; gap: 5px; padding: 7px 10px; border-bottom: 1px solid var(--line); background: #343c38; }
+.markdown-tool-group { display: flex; overflow: hidden; border: 1px solid var(--line); }
+.markdown-tool-group button { min-width: 30px; height: 29px; padding: 0 7px; border: 0; border-right: 1px solid var(--line); color: var(--ink-soft); background: #29302d; font-family: "SFMono-Regular", Consolas, monospace; font-size: 10px; font-weight: 700; cursor: pointer; }
+.markdown-tool-group button:last-child { border-right: 0; }
+.markdown-tool-group button:hover, .markdown-tool-group button:focus-visible { color: var(--accent); background: var(--accent-soft); outline: none; }
+.markdown-visual, .markdown-source { min-height: 280px; height: 100%; max-height: calc(94vh - 235px); overflow: auto; border: 0; color: var(--ink); background: #252b28; font-size: 13px; line-height: 1.58; }
+.markdown-visual { padding: 18px 20px; outline: none; }
+.markdown-visual:empty::before { color: var(--muted-2); content: attr(data-placeholder); pointer-events: none; }
+.markdown-visual:focus { box-shadow: inset 0 0 0 1px var(--accent); }
+.markdown-source { display: none; padding: 18px 20px; resize: none; font-family: "SFMono-Regular", Consolas, monospace; tab-size: 2; outline: none; }
+.markdown-editor[data-mode="source"] .markdown-visual { display: none; }
+.markdown-editor[data-mode="source"] .markdown-source { display: block; }
+.markdown-visual.node-markdown h1 { font-size: 26px; }
+.markdown-visual.node-markdown h2 { font-size: 21px; }
+.markdown-visual.node-markdown h3 { font-size: 17px; }
+.markdown-visual.node-markdown h4, .markdown-visual.node-markdown h5, .markdown-visual.node-markdown h6 { font-size: 14px; }
+.markdown-visual.node-markdown p { margin-bottom: 10px; }
+.markdown-visual.node-markdown pre code { font-size: 12px; }
+.markdown-inspector-preview { max-height: 145px; padding: 8px; overflow: auto; border: 1px solid var(--line); color: var(--ink-soft); background: #252b28; font-size: 10px; line-height: 1.45; }
+.markdown-inspector-preview.node-markdown h1 { font-size: 15px; }
+.markdown-inspector-preview.node-markdown h2 { font-size: 13px; }
+.markdown-inspector-preview.node-markdown h3, .markdown-inspector-preview.node-markdown h4, .markdown-inspector-preview.node-markdown h5, .markdown-inspector-preview.node-markdown h6 { font-size: 11px; }
+.markdown-edit-button { width: 100%; margin-top: 5px; }
+
 .create-menu { display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; }
 .create-choice { min-height: 70px; padding: 9px; border: 1px solid var(--line); color: var(--ink); background: var(--panel-2); text-align: left; cursor: pointer; }
 .create-choice:hover { border-color: var(--accent); background: var(--accent-soft); }
@@ -333,4 +368,10 @@
   .context-menu button { min-height: 44px; font-size: 13px; }
   .search-filters { grid-template-columns: 1fr; }
   .checkpoint-create { grid-template-columns: 1fr; }
+  .markdown-editor-modal { height: calc(100vh - 20px); max-height: none; }
+  .markdown-editor { min-height: calc(100vh - 124px); }
+  .markdown-editor-hint { display: none; }
+  .markdown-toolbar { gap: 4px; padding: 6px; }
+  .markdown-tool-group button { min-width: 32px; height: 34px; }
+  .markdown-visual, .markdown-source { max-height: none; padding: 14px; }
 }
