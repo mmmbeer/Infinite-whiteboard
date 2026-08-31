@@ -2,6 +2,9 @@ import { assetDb } from "./database.js";
 import { renderMarkdown } from "./markdown.js";
 import { state, getNode, commit, snapshot } from "./state.js";
 import { $, escapeHtml } from "./utils.js";
+import { isEffectivelyHidden, isEffectivelyLocked, movableItemsForSelection, topLevelSelection } from "./item-tree.js";
+import { snapAdjustment } from "./arrange.js";
+import { attachNodeToAxis, detachNodeFromAxis, findAxisAttachment, reflowAxis } from "./axis-bindings.js";
 
 const objectUrls = new Map();
 const renderedNodeState = new WeakMap();
@@ -41,7 +44,7 @@ export function updateNodeFrame(element, node) {
 
 export async function renderNodes(layer) {
   const existing = new Map([...layer.children].map((element) => [element.dataset.id, element]));
-  for (const node of state.board.nodes) {
+  for (const node of state.board.nodes.filter((item) => !isEffectivelyHidden(item))) {
     let element = existing.get(node.id);
     if (!element) {
       element = document.createElement("article");
@@ -50,14 +53,19 @@ export async function renderNodes(layer) {
       layer.append(element);
     }
     if (contentChanged(node)) {
-      element.innerHTML = `<header class="node-bar"><span class="node-kind">${escapeHtml(node.type)}</span><span class="node-title">${escapeHtml(node.title)}</span></header><div class="node-body">${bodyHtml(node)}${node.tags?.length ? `<div class="node-tags">${node.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : ""}</div>${["n", "e", "s", "w"].map((anchor) => `<button class="anchor" data-anchor="${anchor}" aria-label="Connect from ${anchor}"></button>`).join("")}${node.type === "image" ? transformHandles() : ""}`;
+      element.innerHTML = `<header class="node-bar"><span class="node-kind">${escapeHtml(node.type)}</span><span class="node-title">${escapeHtml(node.title)}</span><span class="node-state"></span></header><div class="node-body">${bodyHtml(node)}${node.tags?.length ? `<div class="node-tags">${node.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>` : ""}</div>${["n", "e", "s", "w"].map((anchor) => `<button class="anchor" data-anchor="${anchor}" aria-label="Connect from ${anchor}"></button>`).join("")}${node.type === "image" ? transformHandles() : ""}`;
       if (node.type === "image") {
         const image = $("img", element);
         imageUrl(node.assetId).then((url) => { if (url) image.src = url; });
       }
     }
     updateNodeFrame(element, node);
+    element.style.setProperty("--node-color", node.color || "#ff715b");
     element.classList.toggle("selected", state.selected.has(node.id));
+    element.classList.toggle("locked", isEffectivelyLocked(node));
+    element.classList.toggle("axis-bound", Boolean(node.axisBinding));
+    const stateBadge = $(".node-state", element); if (stateBadge) stateBadge.textContent = `${node.axisBinding ? "⇥" : ""}${isEffectivelyLocked(node) ? "▣" : ""}`;
+    layer.append(element);
     existing.delete(node.id);
   }
   existing.forEach((element) => element.remove());
@@ -71,6 +79,8 @@ export function bindNodeInteractions(layer, canvasApi) {
     const anchor = event.target.closest(".anchor");
     const element = event.target.closest(".board-node");
     if (!element) return;
+    const selectedNode = getNode(element.dataset.id);
+    if (isEffectivelyLocked(selectedNode)) return;
     if (resizeHandle) return startResize(event, getNode(element.dataset.id), resizeHandle.dataset.resize, canvasApi);
     if (rotateHandle) return startRotate(event, getNode(element.dataset.id), canvasApi);
     if (anchor) return canvasApi.startConnection(event, element.dataset.id, anchor.dataset.anchor);
@@ -87,7 +97,7 @@ export function bindNodeInteractions(layer, canvasApi) {
   layer.addEventListener("dblclick", (event) => {
     const element = event.target.closest(".board-node");
     if (!element) return;
-    canvasApi.editNode(getNode(element.dataset.id));
+    const node = getNode(element.dataset.id); if (!isEffectivelyLocked(node)) canvasApi.editNode(node);
   });
 }
 
@@ -97,7 +107,7 @@ function rotateVector(point, degrees) {
 }
 
 function startResize(event, node, handle, canvasApi) {
-  if (!node) return; event.preventDefault(); event.stopPropagation(); snapshot();
+  if (!node || isEffectivelyLocked(node)) return; event.preventDefault(); event.stopPropagation(); snapshot();
   canvasApi.beginLiveTransform([node]);
   const signs = { nw: [-1, -1], ne: [1, -1], se: [1, 1], sw: [-1, 1] }[handle];
   const center = { x: node.x + node.w / 2, y: node.y + node.h / 2 };
@@ -119,7 +129,7 @@ function startResize(event, node, handle, canvasApi) {
 }
 
 function startRotate(event, node, canvasApi) {
-  if (!node) return; event.preventDefault(); event.stopPropagation(); snapshot();
+  if (!node || isEffectivelyLocked(node)) return; event.preventDefault(); event.stopPropagation(); snapshot();
   canvasApi.beginLiveTransform([node]);
   const center = { x: node.x + node.w / 2, y: node.y + node.h / 2 };
   const start = canvasApi.screenToWorld({ x: event.clientX, y: event.clientY });
@@ -138,24 +148,37 @@ function startRotate(event, node, canvasApi) {
 function startDrag(event, canvasApi) {
   event.preventDefault();
   const start = canvasApi.screenToWorld({ x: event.clientX, y: event.clientY });
-  const nodes = [...state.selected].map(getNode).filter(Boolean);
-  const origins = new Map(nodes.map((node) => [node.id, { x: node.x, y: node.y }]));
+  const items = movableItemsForSelection();
+  state.board.axes.filter((axis) => state.selected.has(axis.id)).forEach((axis) => state.board.nodes.filter((node) => node.axisBinding?.axisId === axis.id && !isEffectivelyLocked(node)).forEach((node) => { if (!items.includes(node)) items.push(node); }));
+  const nodes = items.filter((item) => state.board.nodes.includes(item)); const topItems = topLevelSelection().filter((item) => !isEffectivelyLocked(item));
+  const origins = new Map(items.map((item) => [item.id, { x: item.x, y: item.y }]));
   snapshot();
   canvasApi.beginLiveTransform(nodes);
   const move = (moveEvent) => {
     if (moveEvent.pointerId !== event.pointerId || canvasApi.isGesturing?.()) return;
     const point = canvasApi.screenToWorld({ x: moveEvent.clientX, y: moveEvent.clientY });
-    nodes.forEach((node) => {
-      const origin = origins.get(node.id);
-      node.x = origin.x + point.x - start.x;
-      node.y = origin.y + point.y - start.y;
+    const rawDx = point.x - start.x; const rawDy = point.y - start.y;
+    const snapped = snapAdjustment(topItems, rawDx, rawDy, { zoom: state.board.viewport.zoom, disable: moveEvent.altKey });
+    items.forEach((item) => {
+      const origin = origins.get(item.id);
+      item.x = origin.x + snapped.dx;
+      item.y = origin.y + snapped.dy;
     });
+    canvasApi.showGuides?.(snapped.guides);
     canvasApi.queueLiveNodes(nodes);
+    topItems.filter((item) => !state.board.nodes.includes(item)).forEach((item) => canvasApi.queueLiveItem?.(item, nodes));
   };
   const up = (upEvent) => {
     if (upEvent.pointerId !== event.pointerId) return;
     document.removeEventListener("pointermove", move);
     document.removeEventListener("pointerup", up);
+    canvasApi.showGuides?.([]);
+    if (state.board.settings?.axisSnap !== false) nodes.forEach((node) => {
+      const attachment = findAxisAttachment(node, 28 / state.board.viewport.zoom);
+      if (attachment) attachNodeToAxis(node, attachment.axis, attachment.value, true);
+      else if (node.axisBinding) detachNodeFromAxis(node);
+    });
+    state.board.axes.filter((axis) => state.selected.has(axis.id)).forEach((axis) => reflowAxis(axis.id));
     commit("move", false);
     canvasApi.finishLiveTransform("move");
   };

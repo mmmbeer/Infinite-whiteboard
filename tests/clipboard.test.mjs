@@ -35,4 +35,16 @@ assert.equal(state.board.groups.some((item) => item.id === "g"), false);
 assert.equal(state.board.nodes.some((item) => ["a", "b"].includes(item.id)), false);
 assert.equal(state.board.edges.some((item) => item.id === "e"), false);
 
+state.board.nodes = [node("nested", 30, "child")];
+state.board.groups = [
+  { id: "parent", title: "Parent", x: 0, y: 0, w: 400, h: 300, parentId: null },
+  { id: "child", title: "Child", x: 20, y: 20, w: 260, h: 180, parentId: "parent" },
+];
+state.board.axes = []; state.board.edges = []; state.selected = new Set(["parent"]);
+assert.equal(copySelection(), 3, "copying a frame includes nested frames and their cards");
+assert.equal(await pasteSelection(), 3);
+const nestedCopy = state.board.groups.at(-1); const parentCopy = state.board.groups.at(-2);
+assert.equal(nestedCopy.parentId, parentCopy.id, "nested frame hierarchy is remapped on paste");
+assert.equal(state.board.nodes.at(-1).groupId, nestedCopy.id);
+
 process.exit(0);

@@ -28,12 +28,12 @@ export function emptyBoard(id = uid("board"), title = "Untitled board") {
   return {
     id,
     title,
-    version: 2,
+    version: 3,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     viewport: { x: innerWidth / 2, y: innerHeight / 2, zoom: 1 },
-    nodes: [], edges: [], groups: [], axes: [],
-    settings: { connectionType: "curved" },
+    nodes: [], edges: [], groups: [], axes: [], bookmarks: [],
+    settings: { connectionType: "curved", snapEnabled: true, gridSnap: false, gridSize: 22, axisSnap: true, snapDistance: 8 },
   };
 }
 
@@ -41,23 +41,41 @@ export function normalizeBoard(board) {
   const normalized = board && typeof board === "object" ? board : emptyBoard();
   normalized.id ||= uid("board");
   normalized.title = String(normalized.title || "Untitled board");
-  normalized.version = 2;
+  normalized.version = 3;
   normalized.createdAt ||= normalized.updatedAt || Date.now();
   normalized.updatedAt ||= Date.now();
   normalized.viewport = { x: innerWidth / 2, y: innerHeight / 2, zoom: 1, ...(normalized.viewport || {}) };
-  ["nodes", "edges", "groups", "axes"].forEach((key) => { if (!Array.isArray(normalized[key])) normalized[key] = []; });
+  ["nodes", "edges", "groups", "axes", "bookmarks"].forEach((key) => { if (!Array.isArray(normalized[key])) normalized[key] = []; });
   normalized.archivedAt ||= null;
-  normalized.settings = { connectionType: "curved", ...(normalized.settings || {}) };
+  normalized.settings = { connectionType: "curved", snapEnabled: true, gridSnap: false, gridSize: 22, axisSnap: true, snapDistance: 8, ...(normalized.settings || {}) };
   normalized.nodes.forEach((node) => {
     if (!Number.isFinite(node.rotation)) node.rotation = 0;
     node.color = legacyPalette.get(node.color?.toLowerCase()) || node.color || "#ff715b";
     node.tags = Array.isArray(node.tags) ? node.tags : [];
+    node.groupId ||= null; node.locked = Boolean(node.locked); node.hidden = Boolean(node.hidden);
+    if (node.axisBinding && typeof node.axisBinding !== "object") node.axisBinding = null;
+  });
+  normalized.groups.forEach((group) => {
+    group.parentId ||= null; group.locked = Boolean(group.locked); group.hidden = Boolean(group.hidden);
+    group.collapsed = Boolean(group.collapsed); group.manualSize = Boolean(group.manualSize);
+  });
+  normalized.axes.forEach((axis) => {
+    axis.mode = axis.mode === "number" ? "number" : "eras";
+    axis.min = Number.isFinite(Number(axis.min)) ? Number(axis.min) : 0;
+    axis.max = Number.isFinite(Number(axis.max)) ? Number(axis.max) : 100;
+    if (axis.max <= axis.min) axis.max = axis.min + 100;
+    axis.step = Math.max(0.0001, Number(axis.step) || 25);
+    axis.locked = Boolean(axis.locked); axis.hidden = Boolean(axis.hidden);
   });
   [...normalized.groups, ...normalized.axes].forEach((item) => {
     item.color = legacyPalette.get(item.color?.toLowerCase()) || item.color;
     item.tags = Array.isArray(item.tags) ? item.tags : [];
   });
-  normalized.edges.forEach((edge) => { edge.tags = Array.isArray(edge.tags) ? edge.tags : []; });
+  normalized.edges.forEach((edge) => {
+    edge.tags = Array.isArray(edge.tags) ? edge.tags : [];
+    edge.color ||= "#cbd2d0"; edge.style ||= "solid"; edge.direction ||= "forward";
+    edge.connectionType ||= "inherit"; edge.locked = Boolean(edge.locked); edge.hidden = Boolean(edge.hidden);
+  });
   return normalized;
 }
 
@@ -239,7 +257,7 @@ export function newNode(partial) {
   return {
     id: uid("node"), type: "text", title: "Untitled", description: "", content: "",
     x: 0, y: 0, w: 260, h: 160, category: "", tags: [], groupId: null,
-    color: "#ff715b", rotation: 0, createdAt: Date.now(), ...partial,
+    color: "#ff715b", rotation: 0, locked: false, hidden: false, axisBinding: null, createdAt: Date.now(), ...partial,
   };
 }
 export function addNode(partial) {
@@ -248,13 +266,21 @@ export function addNode(partial) {
 }
 export function getNode(id) { return state.board.nodes.find((node) => node.id === id); }
 export function removeSelected() {
-  const ids = new Set(state.selected);
-  if (!ids.size && !state.selectedEdge) return false;
+  const requested = new Set(state.selected);
+  const ids = new Set([...requested].filter((id) => {
+    const item = [...state.board.nodes, ...state.board.groups, ...state.board.axes].find((entry) => entry.id === id);
+    return item && !item.locked;
+  }));
+  const selectedEdge = state.board.edges.find((edge) => edge.id === state.selectedEdge && !edge.locked)?.id || null;
+  if (!ids.size && !selectedEdge) return false;
   snapshot();
+  const groupParents = new Map(state.board.groups.map((group) => [group.id, group.parentId || null]));
+  const survivingParent = (id) => { let parentId = id; const seen = new Set(); while (parentId && ids.has(parentId) && !seen.has(parentId)) { seen.add(parentId); parentId = groupParents.get(parentId) || null; } return parentId; };
   state.board.nodes = state.board.nodes.filter((node) => !ids.has(node.id));
   state.board.groups = state.board.groups.filter((group) => !ids.has(group.id));
   state.board.axes = state.board.axes.filter((axis) => !ids.has(axis.id));
-  state.board.nodes.forEach((node) => { if (ids.has(node.groupId)) node.groupId = null; });
-  state.board.edges = state.board.edges.filter((edge) => !ids.has(edge.from) && !ids.has(edge.to) && edge.id !== state.selectedEdge);
+  state.board.nodes.forEach((node) => { if (ids.has(node.groupId)) node.groupId = survivingParent(node.groupId); if (ids.has(node.axisBinding?.axisId)) node.axisBinding = null; });
+  state.board.groups.forEach((group) => { if (ids.has(group.parentId)) group.parentId = survivingParent(group.parentId); });
+  state.board.edges = state.board.edges.filter((edge) => !ids.has(edge.from) && !ids.has(edge.to) && edge.id !== selectedEdge);
   state.selected.clear(); state.selectedEdge = null; commit("delete", false); return true;
 }

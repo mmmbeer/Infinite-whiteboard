@@ -10,7 +10,8 @@ function groupResult(group) {
 }
 
 function axisResult(axis) {
-  return { kind: "axis", type: "axis", id: axis.id, title: axis.label || "Timeline", category: "", tags: [], searchable: [axis.label, ...(axis.eras || [])].join(" "), snippet: (axis.eras || []).join(" · ") };
+  const values = axis.mode === "number" ? [axis.min, axis.max, axis.step] : (axis.eras || []);
+  return { kind: "axis", type: "axis", id: axis.id, title: axis.label || "Timeline", category: "", tags: [], searchable: [axis.label, ...values].join(" "), snippet: axis.mode === "number" ? `${axis.min}–${axis.max} · step ${axis.step}` : values.join(" · ") };
 }
 
 function edgeResult(edge, nodes) {

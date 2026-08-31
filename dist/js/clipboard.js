@@ -1,5 +1,6 @@
 import { commit, snapshot, state } from "./state.js";
 import { boundsOf, uid } from "./utils.js";
+import { descendantGroupIds } from "./item-tree.js";
 
 const FORMAT = "infinite-whiteboard-selection-v1";
 let clipboard = null;
@@ -7,8 +8,9 @@ let pasteCount = 0;
 
 function selectedPayload() {
   const selectedIds = new Set(state.selected);
-  const groups = state.board.groups.filter((group) => selectedIds.has(group.id));
-  const groupIds = new Set(groups.map((group) => group.id));
+  const rootGroupIds = state.board.groups.filter((group) => selectedIds.has(group.id)).map((group) => group.id);
+  const groupIds = new Set(rootGroupIds); rootGroupIds.forEach((id) => descendantGroupIds(id).forEach((childId) => groupIds.add(childId)));
+  const groups = state.board.groups.filter((group) => groupIds.has(group.id));
   const nodes = state.board.nodes.filter((node) => selectedIds.has(node.id) || groupIds.has(node.groupId));
   const nodeIds = new Set(nodes.map((node) => node.id));
   const axes = state.board.axes.filter((axis) => selectedIds.has(axis.id));
@@ -71,17 +73,19 @@ function pastePayload(payload, point) {
     ? { x: point.x - sourceBounds.x, y: point.y - sourceBounds.y }
     : { x: step, y: step };
   const groupMap = new Map(payload.groups.map((group) => [group.id, uid("group")]));
+  const axisMap = new Map(payload.axes.map((axis) => [axis.id, uid("axis")]));
   const nodeMap = new Map(payload.nodes.map((node) => [node.id, uid("node")]));
-  const groups = payload.groups.map((group) => ({ ...group, id: groupMap.get(group.id), x: group.x + delta.x, y: group.y + delta.y }));
+  const groups = payload.groups.map((group) => ({ ...group, id: groupMap.get(group.id), parentId: groupMap.get(group.parentId) || null, x: group.x + delta.x, y: group.y + delta.y }));
   const nodes = payload.nodes.map((node) => ({
     ...node,
     id: nodeMap.get(node.id),
     groupId: groupMap.get(node.groupId) || null,
+    axisBinding: node.axisBinding && axisMap.has(node.axisBinding.axisId) ? { ...node.axisBinding, axisId: axisMap.get(node.axisBinding.axisId) } : null,
     x: node.x + delta.x,
     y: node.y + delta.y,
     createdAt: Date.now(),
   }));
-  const axes = payload.axes.map((axis) => ({ ...axis, id: uid("axis"), x: axis.x + delta.x, y: axis.y + delta.y }));
+  const axes = payload.axes.map((axis) => ({ ...axis, id: axisMap.get(axis.id), x: axis.x + delta.x, y: axis.y + delta.y }));
   const edges = payload.edges
     .filter((edge) => nodeMap.has(edge.from) && nodeMap.has(edge.to))
     .map((edge) => ({ ...edge, id: uid("edge"), from: nodeMap.get(edge.from), to: nodeMap.get(edge.to) }));

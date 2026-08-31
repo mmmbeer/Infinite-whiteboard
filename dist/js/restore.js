@@ -41,10 +41,11 @@ async function storeAssets(assets, boardId) {
 function mergeIntoCurrent(imported) {
   const nodeIds = new Map(imported.nodes.map((item) => [item.id, uid("node")]));
   const groupIds = new Map(imported.groups.map((item) => [item.id, uid("group")]));
+  const axisIds = new Map(imported.axes.map((item) => [item.id, uid("axis")]));
   const offset = 36;
-  const groups = imported.groups.map((item) => ({ ...item, id: groupIds.get(item.id), x: item.x + offset, y: item.y + offset }));
-  const nodes = imported.nodes.map((item) => ({ ...item, id: nodeIds.get(item.id), groupId: groupIds.get(item.groupId) || null, x: item.x + offset, y: item.y + offset }));
-  const axes = imported.axes.map((item) => ({ ...item, id: uid("axis"), x: item.x + offset, y: item.y + offset }));
+  const groups = imported.groups.map((item) => ({ ...item, id: groupIds.get(item.id), parentId: groupIds.get(item.parentId) || null, x: item.x + offset, y: item.y + offset }));
+  const nodes = imported.nodes.map((item) => ({ ...item, id: nodeIds.get(item.id), groupId: groupIds.get(item.groupId) || null, axisBinding: item.axisBinding && axisIds.has(item.axisBinding.axisId) ? { ...item.axisBinding, axisId: axisIds.get(item.axisBinding.axisId) } : null, x: item.x + offset, y: item.y + offset }));
+  const axes = imported.axes.map((item) => ({ ...item, id: axisIds.get(item.id), x: item.x + offset, y: item.y + offset }));
   const edges = imported.edges.filter((item) => nodeIds.has(item.from) && nodeIds.has(item.to)).map((item) => ({ ...item, id: uid("edge"), from: nodeIds.get(item.from), to: nodeIds.get(item.to) }));
   snapshot("Before backup merge"); state.board.groups.push(...groups); state.board.nodes.push(...nodes); state.board.axes.push(...axes); state.board.edges.push(...edges);
   state.selected.clear(); nodes.forEach((item) => state.selected.add(item.id)); axes.forEach((item) => state.selected.add(item.id));

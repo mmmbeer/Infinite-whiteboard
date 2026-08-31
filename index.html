@@ -24,6 +24,9 @@
         <button class="button ghost" id="undo-btn" title="Undo (Ctrl+Z)">↶</button>
         <button class="button ghost" id="redo-btn" title="Redo (Ctrl+Shift+Z)">↷</button>
         <button class="button" id="search-btn" title="Find on board (Ctrl+K)">Find</button>
+        <button class="button" id="arrange-btn" title="Arrange selected items">Arrange</button>
+        <button class="button" id="layers-btn" title="Layers, visibility, and locks (L)">Layers</button>
+        <button class="button" id="bookmarks-btn" title="Navigation bookmarks (B)">Navigate</button>
         <button class="button" id="boards-btn" title="Open boards, restore, and history">Boards</button>
         <button class="button" id="import-btn" title="Upload assets (U)">Upload</button>
         <button class="button" id="settings-btn" title="Board settings (S)">Settings</button>
@@ -37,7 +40,7 @@
       <button class="tool" data-tool="multi" title="Multi-select (M)"><span>☑</span><small>Multi</small></button>
       <button class="tool" data-tool="hand" title="Pan (H)"><span>✥</span><small>Pan</small></button>
       <button class="tool" data-tool="connect" title="Connect (C)"><span>⌁</span><small>Connect</small></button>
-      <button class="tool" data-tool="group" title="Create group (G)"><span>▣</span><small>Group</small></button>
+      <button class="tool" data-tool="group" title="Create frame from selection (G)"><span>▣</span><small>Frame</small></button>
       <button class="tool" data-tool="axis" title="Add time axis (A)"><span>⇥</span><small>Axis</small></button>
       <button class="tool" data-tool="capture" title="Capture area (P)"><span>⌗</span><small>Capture</small></button>
     </aside>
@@ -48,6 +51,7 @@
         <div id="grid" class="grid"></div>
         <div id="axes-layer" class="axes-layer"></div>
         <div id="groups-layer" class="groups-layer"></div>
+        <div id="guides-layer" class="guides-layer"></div>
         <svg id="edges-layer" class="edges-layer" overflow="visible" aria-hidden="true"></svg>
         <div id="nodes-layer" class="nodes-layer"></div>
       </div>
@@ -59,6 +63,7 @@
         <button id="zoom-reset" aria-label="Reset zoom"><span id="zoom-value">100%</span></button>
         <button id="zoom-in" aria-label="Zoom in">+</button>
         <button id="zoom-fit" aria-label="Fit board">Fit</button>
+        <button id="zoom-selection" aria-label="Zoom to selection" title="Zoom to selection (2)">Sel</button>
       </div>
       <div class="minimap" id="minimap" aria-hidden="true"><div id="minimap-window"></div></div>
     </section>

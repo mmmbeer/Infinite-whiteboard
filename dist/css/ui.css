@@ -116,6 +116,16 @@
 .field textarea { min-height: 68px; resize: vertical; line-height: 1.45; }
 .field input[type="color"] { height: 30px; padding: 3px; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.check-field { display: flex; align-items: center; gap: 7px; margin: 7px 0; color: var(--muted); font-size: 10px; line-height: 1.35; cursor: pointer; }
+.check-field input { width: auto; margin: 0; accent-color: var(--accent); }
+.compact-actions { display: flex; gap: 5px; }
+.compact-actions .button { flex: 1; }
+.full-button { width: 100%; }
+.inspector-note { margin: 4px 0 0; color: var(--muted-2); font-size: 9px; line-height: 1.45; }
+.arrange-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.arrange-grid .button { min-width: 0; padding-inline: 5px; font-size: 9px; }
+.color-apply { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 7px; }
+.color-apply input[type="color"] { width: 44px; }
 .inspector-actions { display: flex; gap: 5px; padding: 9px 10px; }
 .inspector-actions .button { flex: 1; font-size: 10px; }
 
@@ -179,7 +189,9 @@
   border: 1px solid var(--line);
   background: rgba(46, 53, 50, .94);
   box-shadow: var(--shadow);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: crosshair;
+  touch-action: none;
 }
 
 .minimap::before {
@@ -197,6 +209,7 @@
 .minimap-group { position: absolute; z-index: 1; border: 1px solid #7b8782; }
 .minimap-axis { position: absolute; z-index: 1; min-width: 2px; min-height: 2px; background: #8b2635; }
 .minimap #minimap-window { position: absolute; z-index: 2; border: 1px solid var(--accent); background: rgba(255, 113, 91, .08); }
+.minimap:hover { border-color: var(--accent); }
 
 .modal-backdrop {
   position: fixed;
@@ -347,11 +360,29 @@
 .search-result small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .search-result i { color: var(--muted-2); font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; font-style: normal; text-transform: uppercase; }
 
+.bookmark-create { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 5px; }
+.bookmark-create input { min-width: 0; padding: 7px 8px; border: 1px solid var(--line); color: var(--ink); background: #252b28; font-size: 11px; }
+.bookmark-list, .layer-list { display: grid; gap: 4px; max-height: 460px; overflow: auto; }
+.bookmark-row, .layer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border: 1px solid var(--line); background: var(--panel-2); }
+.bookmark-row > button:first-child { display: grid; gap: 2px; min-width: 0; padding: 8px; border: 0; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
+.bookmark-row > button:first-child:hover { background: var(--panel-3); }
+.bookmark-row strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
+.bookmark-row span { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.layer-row { grid-template-columns: minmax(0, 1fr) 31px 31px; }
+.layer-row.hidden-item { opacity: .58; }
+.layer-focus { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 7px; min-width: 0; padding: 7px; border: 0; color: var(--ink); background: transparent; text-align: left; cursor: pointer; }
+.layer-focus:hover { background: var(--panel-3); }
+.layer-focus span { color: var(--accent); font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; text-transform: uppercase; }
+.layer-focus strong { overflow: hidden; text-overflow: ellipsis; font-size: 10px; white-space: nowrap; }
+.layer-state { width: 27px; height: 27px; padding: 0; border: 1px solid transparent; color: var(--muted-2); background: transparent; cursor: pointer; }
+.layer-state:hover, .layer-state.active { border-color: var(--line); color: var(--accent); background: var(--accent-soft); }
+
 @keyframes toast-in { from { opacity: 0; transform: translateY(7px); } }
 
 @media (max-width: 980px) {
   .inspector { display: none; }
   .minimap { right: 12px; }
+  #arrange-btn { display: none; }
 }
 
 @media (max-width: 600px) {
@@ -368,6 +399,10 @@
   .context-menu button { min-height: 44px; font-size: 13px; }
   .search-filters { grid-template-columns: 1fr; }
   .checkpoint-create { grid-template-columns: 1fr; }
+  .bookmark-create { grid-template-columns: 1fr 1fr; }
+  .bookmark-create input { grid-column: 1 / -1; }
+  #bookmarks-btn { font-size: 0; }
+  #bookmarks-btn::after { content: "⌖"; font-size: 16px; }
   .markdown-editor-modal { height: calc(100vh - 20px); max-height: none; }
   .markdown-editor { min-height: calc(100vh - 124px); }
   .markdown-editor-hint { display: none; }

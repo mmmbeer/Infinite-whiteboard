@@ -23,6 +23,16 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 - Drag from any selected card's anchor toward another card. The preview snaps to the nearest target anchor.
 - Select an image to reveal four resize handles and a rotation handle. Hold `Shift` while resizing to preserve its aspect ratio or while rotating to snap to 15° increments.
 - Select cards and choose **Group** or press `Ctrl/Cmd+G`.
+- Drag selected cards with alignment snapping and live guides. Hold `Alt` to bypass snapping. Board settings can also enable dot-grid and axis-tick snapping.
+- Use **Arrange** or the multi-selection inspector to align edges or centers, distribute equal gaps, or auto-layout a selection as a grid, row, or column.
+- Bring cards forward or send them backward with the context menu or `[` and `]` shortcuts.
+- Lock or hide cards, frames, axes, and paths. Open **Layers** to find, unlock, or restore items that cannot be clicked on the canvas. Hidden content is excluded from captures and exports.
+- Frames are resizable sections. They can contain other frames, switch between content-fit and fixed sizing, and collapse without deleting their nested content.
+- Choose **Navigate** to save named views or selection areas. Use **Sel** in the zoom controls or press `2` to zoom to the current selection.
+- Click or drag anywhere on the minimap to recenter the visible canvas.
+- Select a path to set its label, color, solid/dashed/dotted style, arrow direction, curved/straight routing, source and destination cards, and endpoint anchors.
+- Use the multi-selection inspector to apply categories, tags, frame membership, color, locks, and visibility to many cards at once.
+- Era axes now support categorical eras and numeric ranges. Attach a card from its inspector, choose an era or value, and the card will follow axis movement and scale changes. Cards dropped directly on a tick can attach automatically.
 - Use the inspector to edit descriptions, categories, tags, groups, dimensions, and text. Markdown cards open a full editor with visual and source modes, formatting controls, tables, task lists, quotes, code blocks, links, and keyboard formatting shortcuts.
 - Choose **Capture**, then drag across a region to download a PNG automatically.
 - Choose **Export ZIP** to download `board.json`, every original asset, a full-board preview, and export notes.
@@ -61,8 +71,10 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 | `Ctrl/Cmd+Z` | Undo |
 | `Ctrl/Cmd+Shift+Z` | Redo |
 | `+ / -` | Zoom in / out |
-| `1` | Reset to 100% zoom |
+| `1 / 2` | Reset to 100% / zoom to selection |
 | `0` | Fit board |
+| `[ / ]` | Send backward / bring forward (`Shift` sends to back/front) |
+| `L / B` | Open Layers / navigation bookmarks |
 | `S / E` | Settings / export ZIP |
 | `?` | Open the full keyboard and touch reference |
 

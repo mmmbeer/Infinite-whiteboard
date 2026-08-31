@@ -1,5 +1,6 @@
 import { state, getNode, commit, snapshot } from "./state.js";
 import { uid, escapeHtml } from "./utils.js";
+import { isEffectivelyHidden, isEffectivelyLocked } from "./item-tree.js";
 
 const anchorPoint = (node, anchor) => {
   const center = { x: node.x + node.w / 2, y: node.y + node.h / 2 };
@@ -26,11 +27,13 @@ export function renderEdges(svg, preview = null) {
   const marker = `<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker></defs>`;
   const html = state.board.edges.map((edge) => {
     const from = getNode(edge.from); const to = getNode(edge.to);
-    if (!from || !to) return "";
+    if (!from || !to || edge.hidden || isEffectivelyHidden(from) || isEffectivelyHidden(to)) return "";
     const start = anchorPoint(from, edge.fromAnchor); const end = anchorPoint(to, edge.toAnchor);
-    const path = pathBetween(start, end, edge.fromAnchor, edge.toAnchor, connectionType);
+    const type = edge.connectionType && edge.connectionType !== "inherit" ? edge.connectionType : connectionType;
+    const path = pathBetween(start, end, edge.fromAnchor, edge.toAnchor, type);
     const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
-    return `<g data-edge="${edge.id}"><path class="edge-hit" d="${path}"/><path class="edge ${state.selectedEdge === edge.id ? "selected" : ""}" d="${path}" marker-end="url(#arrow)"/>${edge.label ? `<text class="edge-label" x="${midpoint.x}" y="${midpoint.y - 8}" text-anchor="middle">${escapeHtml(edge.label)}</text>` : ""}</g>`;
+    const direction = edge.direction || "forward"; const markers = `${["backward", "both"].includes(direction) ? `marker-start="url(#arrow)"` : ""} ${["forward", "both"].includes(direction) ? `marker-end="url(#arrow)"` : ""}`;
+    return `<g data-edge="${edge.id}" class="edge-group ${edge.locked ? "locked" : ""}"><path class="edge-hit" d="${path}"/><path class="edge edge-${edge.style || "solid"} ${state.selectedEdge === edge.id ? "selected" : ""}" style="--edge-color:${escapeHtml(edge.color || "#cbd2d0")}" d="${path}" ${markers}/>${edge.label ? `<text class="edge-label" x="${midpoint.x}" y="${midpoint.y - 8}" text-anchor="middle">${escapeHtml(edge.label)}</text>` : ""}</g>`;
   }).join("");
   const previewHtml = preview ? `<path class="edge preview-edge" d="${pathBetween(preview.start, preview.end, preview.anchor, preview.toAnchor || "w", connectionType)}" marker-end="url(#arrow)"/>` : "";
   svg.innerHTML = marker + html + previewHtml;
@@ -41,7 +44,7 @@ export function createEdge(from, to, fromAnchor = "e", toAnchor = "w") {
   const duplicate = state.board.edges.some((edge) => edge.from === from && edge.to === to && edge.fromAnchor === fromAnchor && edge.toAnchor === toAnchor);
   if (duplicate) return null;
   snapshot();
-  const edge = { id: uid("edge"), from, to, fromAnchor, toAnchor, label: "", category: "", tags: [] };
+  const edge = { id: uid("edge"), from, to, fromAnchor, toAnchor, label: "", category: "", tags: [], color: "#cbd2d0", style: "solid", direction: "forward", connectionType: "inherit", locked: false, hidden: false };
   state.board.edges.push(edge); commit("edges", false); return edge;
 }
 
@@ -50,6 +53,7 @@ export function bindEdgeInteractions(svg, onSelect, shouldPan = () => false) {
     if (shouldPan(event)) return;
     const group = event.target.closest("[data-edge]");
     if (!group) return;
+    const edge = state.board.edges.find((item) => item.id === group.dataset.edge); if (isEffectivelyLocked(edge)) return;
     event.stopPropagation();
     state.selected.clear(); state.selectedEdge = group.dataset.edge;
     onSelect();

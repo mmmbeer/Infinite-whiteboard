@@ -4,6 +4,9 @@ import { renderNodes, bindNodeInteractions, updateNodeFrame } from "./nodes.js";
 import { bindEdgeInteractions, createEdge, getAnchorPoint, getClosestAnchor, renderEdges } from "./connections.js";
 import { bindGroupInteractions, renderGroups, updateGroupBounds } from "./groups.js";
 import { bindAxisInteractions, renderAxes } from "./axes.js";
+import { snapAdjustment, selectionBounds } from "./arrange.js";
+import { ancestorGroups, isEffectivelyHidden, isEffectivelyLocked, movableItemsForSelection, topLevelSelection } from "./item-tree.js";
+import { reflowAxis } from "./axis-bindings.js";
 
 export function visibleWorldBounds(view, rect) {
   return { x: -view.x / view.zoom, y: -view.y / view.zoom, w: rect.width / view.zoom, h: rect.height / view.zoom };
@@ -32,6 +35,7 @@ export class InfiniteCanvas {
     this.viewport = $("#viewport"); this.world = $("#world");
     this.nodesLayer = $("#nodes-layer"); this.edgesLayer = $("#edges-layer");
     this.groupsLayer = $("#groups-layer"); this.axesLayer = $("#axes-layer");
+    this.guidesLayer = $("#guides-layer");
     this.selectionBox = $("#selection-box"); this.captureBox = $("#capture-box");
     this.onSelection = onSelection; this.onCreate = onCreate; this.onCapture = onCapture; this.onEditNode = onEditNode; this.onContext = onContext;
     this.preview = null; this.drag = null; this.longPress = null;
@@ -47,12 +51,18 @@ export class InfiniteCanvas {
       refresh: (reason) => this.refresh(reason), editNode: (node) => this.onEditNode(node),
       beginLiveTransform: (nodes) => this.beginLiveTransform(nodes),
       queueLiveNodes: (nodes) => this.queueLiveNodes(nodes),
+      queueLiveItem: (item, members) => this.queueLiveItem(item, members),
       finishLiveTransform: (reason) => this.finishLiveTransform(reason),
       shouldPan: (event) => this.shouldPan(event),
       isGesturing: () => this.isGesturing(),
     });
     bindEdgeInteractions(this.edgesLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
-    bindGroupInteractions(this.groupsLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
+    bindGroupInteractions(this.groupsLayer, {
+      screenToWorld: (point) => this.screenToWorld(point), refreshSelection: () => this.refreshSelection(),
+      refresh: (reason) => this.refresh(reason), queueLiveItem: (item, members) => this.queueLiveItem(item, members),
+      finishLiveTransform: (reason) => this.finishLiveTransform(reason), shouldPan: (event) => this.shouldPan(event),
+      isGesturing: () => this.isGesturing(),
+    });
     bindAxisInteractions(this.axesLayer, () => this.refreshSelection(), (event) => this.shouldPan(event));
     this.viewport.addEventListener("pointerdown", (event) => this.trackTouchStart(event), true);
     this.viewport.addEventListener("pointermove", (event) => this.trackTouchMove(event), true);
@@ -68,6 +78,7 @@ export class InfiniteCanvas {
       else this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY }));
     });
     this.viewport.addEventListener("pointercancel", () => this.cancelDrag());
+    this.bindMinimap();
     this.applyTransform(); this.refresh("init");
   }
 
@@ -86,7 +97,7 @@ export class InfiniteCanvas {
     this.queueMinimapUpdate();
   }
   async refresh(reason = "render") {
-    if (["move", "transform-live", "transform"].includes(reason)) state.board.groups.forEach((group) => updateGroupBounds(group.id));
+    if (reason !== "selection") [...state.board.groups].sort((a, b) => ancestorGroups(b.parentId).length - ancestorGroups(a.parentId).length).forEach((group) => updateGroupBounds(group.id));
     if (reason === "selection") {
       this.syncSelection();
       renderEdges(this.edgesLayer, this.preview);
@@ -105,6 +116,11 @@ export class InfiniteCanvas {
     this.axesLayer.querySelectorAll(".axis").forEach((element) => element.classList.toggle("selected", state.selected.has(element.dataset.id)));
   }
 
+  showGuides(guides = []) {
+    if (!this.guidesLayer) return;
+    this.guidesLayer.innerHTML = guides.map((guide) => `<i class="alignment-guide ${guide.axis} ${guide.kind || "item"}" style="${guide.axis === "x" ? "left" : "top"}:${guide.value}px"></i>`).join("");
+  }
+
   beginLiveTransform(nodes = []) {
     nodes.forEach((node) => this.nodesLayer.querySelector(`[data-id="${node.id}"]`)?.classList.add("is-dragging"));
   }
@@ -112,13 +128,13 @@ export class InfiniteCanvas {
   queueLiveNodes(nodes = []) {
     nodes.forEach((node) => {
       this.liveNodeIds.add(node.id);
-      if (node.groupId) this.liveGroups.add(node.groupId);
+      if (node.groupId) { this.liveGroups.add(node.groupId); ancestorGroups(node.groupId).forEach((group) => this.liveGroups.add(group.id)); }
     });
     this.queueLiveFrame();
   }
 
   queueLiveItem(item, members = []) {
-    if (state.board.groups.includes(item)) this.liveGroups.add(item.id);
+    if (state.board.groups.includes(item)) { this.liveGroups.add(item.id); ancestorGroups(item.parentId).forEach((group) => this.liveGroups.add(group.id)); }
     if (state.board.axes.includes(item)) this.liveAxes.add(item.id);
     members.forEach((node) => this.liveNodeIds.add(node.id));
     this.queueLiveFrame();
@@ -168,7 +184,7 @@ export class InfiniteCanvas {
     if (event.target.closest(".create-fab,.zoom-controls")) return;
     if (this.isGesturing()) return;
     if (this.shouldPan(event)) return this.startPan(event);
-    const interactive = event.target.closest(".board-node,.anchor,.edge-hit,.group-box,.axis,.create-fab,.zoom-controls");
+    const interactive = event.target.closest(".board-node,.anchor,.edge-hit,.group-box,.axis,.create-fab,.zoom-controls,.minimap");
     if (interactive && event.pointerType === "touch") {
       const target = this.contextTarget(interactive);
       if (target) this.startLongPress(event, () => this.onContext?.({ ...target, x: event.clientX, y: event.clientY, point: this.screenToWorld({ x: event.clientX, y: event.clientY }) }));
@@ -203,7 +219,9 @@ export class InfiniteCanvas {
       Object.assign(this.selectionBox.style, { left: `${rect.x}px`, top: `${rect.y - this.viewport.getBoundingClientRect().top}px`, width: `${rect.w}px`, height: `${rect.h}px` });
       this.selectionBox.classList.remove("hidden");
       const a = this.screenToWorld({ x: rect.x, y: rect.y }); const b = this.screenToWorld({ x: rect.x + rect.w, y: rect.y + rect.h });
-      const hits = state.board.nodes.filter((node) => rectsIntersect({ x: node.x, y: node.y, w: node.w, h: node.h }, { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y })).map((node) => node.id);
+      const selectionRect = { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+      const axes = state.board.axes.map((axis) => ({ ...axis, w: axis.orientation === "x" ? axis.length : 12, h: axis.orientation === "y" ? axis.length : 12 }));
+      const hits = [...state.board.nodes, ...state.board.groups, ...axes].filter((item) => !isEffectivelyHidden(item) && !isEffectivelyLocked(item) && rectsIntersect({ x: item.x, y: item.y, w: item.w, h: item.h }, selectionRect)).map((item) => item.id);
       state.selected = new Set(initial);
       if (!toggle && !additive) state.selected.clear();
       hits.forEach((id) => { if (toggle && initial.has(id)) state.selected.delete(id); else state.selected.add(id); });
@@ -218,13 +236,21 @@ export class InfiniteCanvas {
     if (!state.selected.has(id)) return;
     const group = state.board.groups.find((entry) => entry.id === id);
     const item = group || state.board.axes.find((entry) => entry.id === id);
-    if (!item) return; event.preventDefault(); snapshot();
-    const start = this.screenToWorld({ x: event.clientX, y: event.clientY }); const origin = { x: item.x, y: item.y };
-    const members = group ? state.board.nodes.filter((node) => node.groupId === group.id) : [];
-    const memberOrigins = new Map(members.map((node) => [node.id, { x: node.x, y: node.y }]));
-    this.beginLiveTransform(members);
-    const move = (e) => { if (e.pointerId !== event.pointerId || this.isGesturing()) return; const point = this.screenToWorld({ x: e.clientX, y: e.clientY }); const dx = point.x - start.x; const dy = point.y - start.y; item.x = origin.x + dx; item.y = origin.y + dy; members.forEach((node) => { const base = memberOrigins.get(node.id); node.x = base.x + dx; node.y = base.y + dy; }); this.queueLiveItem(item, members); };
-    const up = (e) => { if (e.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); commit("move-item", false); this.finishLiveTransform(group ? "move" : "move-item"); };
+    if (!item || isEffectivelyLocked(item)) return; event.preventDefault(); snapshot();
+    const start = this.screenToWorld({ x: event.clientX, y: event.clientY });
+    const topItems = topLevelSelection().filter((entry) => !isEffectivelyLocked(entry));
+    const movers = movableItemsForSelection();
+    if (state.board.axes.includes(item)) state.board.nodes.filter((node) => node.axisBinding?.axisId === item.id && !isEffectivelyLocked(node)).forEach((node) => { if (!movers.includes(node)) movers.push(node); });
+    const origins = new Map(movers.map((entry) => [entry.id, { x: entry.x, y: entry.y }]));
+    const movingNodes = movers.filter((entry) => state.board.nodes.includes(entry)); this.beginLiveTransform(movingNodes);
+    const move = (e) => {
+      if (e.pointerId !== event.pointerId || this.isGesturing()) return;
+      const point = this.screenToWorld({ x: e.clientX, y: e.clientY }); const rawDx = point.x - start.x; const rawDy = point.y - start.y;
+      const snapped = snapAdjustment(topItems, rawDx, rawDy, { zoom: state.board.viewport.zoom, disable: e.altKey });
+      movers.forEach((entry) => { const origin = origins.get(entry.id); entry.x = origin.x + snapped.dx; entry.y = origin.y + snapped.dy; });
+      this.showGuides(snapped.guides); topItems.forEach((entry) => this.queueLiveItem(entry, movingNodes));
+    };
+    const up = (e) => { if (e.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); this.showGuides([]); movingNodes.filter((node) => node.axisBinding && !state.selected.has(node.axisBinding.axisId)).forEach((node) => { node.axisBinding = null; }); state.board.axes.filter((axis) => state.selected.has(axis.id)).forEach((axis) => reflowAxis(axis.id)); commit("move-item", false); this.finishLiveTransform(group ? "move" : "move-item"); };
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
   }
 
@@ -235,7 +261,8 @@ export class InfiniteCanvas {
       const point = this.screenToWorld({ x: e.clientX, y: e.clientY });
       const targetElement = document.elementFromPoint(e.clientX, e.clientY)?.closest(".board-node");
       const targetId = targetElement?.dataset.id;
-      const snap = targetId && targetId !== nodeId ? getClosestAnchor(targetId, point) : null;
+      const targetNode = targetId ? state.board.nodes.find((node) => node.id === targetId) : null;
+      const snap = targetId && targetId !== nodeId && !isEffectivelyLocked(targetNode) ? getClosestAnchor(targetId, point) : null;
       this.setConnectionSnap(snap ? { nodeId: targetId, anchor: snap.anchor } : null);
       this.preview = { start, end: snap?.point || point, anchor, toAnchor: snap?.anchor || "w" };
       renderEdges(this.edgesLayer, this.preview);
@@ -278,7 +305,9 @@ export class InfiniteCanvas {
   }
   zoomBy(factor) { const rect = this.viewport.getBoundingClientRect(); const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; const point = this.screenToWorld(center); const view = state.board.viewport; view.zoom = clamp(view.zoom * factor, .12, 4); view.x = rect.width / 2 - point.x * view.zoom; view.y = rect.height / 2 - point.y * view.zoom; this.applyTransform(); commit("viewport", false); }
   resetZoom() { state.board.viewport.zoom = 1; this.applyTransform(); commit("viewport", false); }
-  fitBoard() { const axes = state.board.axes.map((axis) => ({ ...axis, w: axis.orientation === "x" ? axis.length : 145, h: axis.orientation === "y" ? axis.length : 68 })); const items = [...state.board.nodes, ...state.board.groups, ...axes]; const bounds = boundsOf(items, 90); const rect = this.viewport.getBoundingClientRect(); const zoom = clamp(Math.min(rect.width / bounds.w, rect.height / bounds.h), .12, 1.5); state.board.viewport = { zoom, x: (rect.width - bounds.w * zoom) / 2 - bounds.x * zoom, y: (rect.height - bounds.h * zoom) / 2 - bounds.y * zoom }; this.applyTransform(); commit("viewport", false); }
+  fitBoard() { const axes = state.board.axes.filter((item) => !isEffectivelyHidden(item)).map((axis) => ({ ...axis, w: axis.orientation === "x" ? axis.length : 145, h: axis.orientation === "y" ? axis.length : 68 })); const items = [...state.board.nodes, ...state.board.groups].filter((item) => !isEffectivelyHidden(item)).concat(axes); const bounds = boundsOf(items, 90); const rect = this.viewport.getBoundingClientRect(); const zoom = clamp(Math.min(rect.width / bounds.w, rect.height / bounds.h), .12, 1.5); state.board.viewport = { zoom, x: (rect.width - bounds.w * zoom) / 2 - bounds.x * zoom, y: (rect.height - bounds.h * zoom) / 2 - bounds.y * zoom }; this.applyTransform(); commit("viewport", false); }
+  zoomToBounds(bounds, maxZoom = 1.6) { if (!bounds) return false; const rect = this.viewport.getBoundingClientRect(); const zoom = clamp(Math.min(rect.width / Math.max(1, bounds.w), rect.height / Math.max(1, bounds.h)), .12, maxZoom); state.board.viewport = { zoom, x: (rect.width - bounds.w * zoom) / 2 - bounds.x * zoom, y: (rect.height - bounds.h * zoom) / 2 - bounds.y * zoom }; this.applyTransform(); commit("viewport", false); return true; }
+  zoomToSelection() { return this.zoomToBounds(selectionBounds()); }
   focusItem(kind, id) {
     let item = kind === "node" ? state.board.nodes.find((entry) => entry.id === id) : kind === "group" ? state.board.groups.find((entry) => entry.id === id) : state.board.axes.find((entry) => entry.id === id);
     if (kind === "edge") {
@@ -350,15 +379,15 @@ export class InfiniteCanvas {
   }
 
   minimapItems() {
-    const axes = state.board.axes.map((axis) => ({
+    const axes = state.board.axes.filter((axis) => !isEffectivelyHidden(axis)).map((axis) => ({
       ...axis,
       w: axis.orientation === "x" ? axis.length : 1,
       h: axis.orientation === "y" ? axis.length : 1,
       minimapType: "axis",
     }));
     return [
-      ...state.board.groups.map((item) => ({ ...item, minimapType: "group" })),
-      ...state.board.nodes.map((item) => ({ ...item, minimapType: "node" })),
+      ...state.board.groups.filter((item) => !isEffectivelyHidden(item)).map((item) => ({ ...item, minimapType: "group" })),
+      ...state.board.nodes.filter((item) => !isEffectivelyHidden(item)).map((item) => ({ ...item, minimapType: "node" })),
       ...axes,
     ];
   }
@@ -368,6 +397,7 @@ export class InfiniteCanvas {
     const rect = this.viewport.getBoundingClientRect(); const visible = visibleWorldBounds(state.board.viewport, rect);
     const items = this.minimapItems(); const bounds = minimapBounds(items, visible);
     const layout = minimapLayout(bounds, map.clientWidth || 142, map.clientHeight || 86);
+    this.minimapGeometry = { bounds, layout };
     const existing = new Map([...map.querySelectorAll("[data-minimap-id]")].map((element) => [element.dataset.minimapId, element]));
     items.forEach((item) => {
       let element = existing.get(item.id);
@@ -387,6 +417,27 @@ export class InfiniteCanvas {
       left: `${x}px`, top: `${y}px`,
       width: `${Math.max(2, item.w * layout.scale)}px`,
       height: `${Math.max(2, item.h * layout.scale)}px`,
+    });
+  }
+
+  minimapPoint(event, geometry = this.minimapGeometry) {
+    const map = $("#minimap"); if (!map || !geometry) return null;
+    const rect = map.getBoundingClientRect();
+    return { x: geometry.bounds.x + (event.clientX - rect.left - geometry.layout.x) / geometry.layout.scale, y: geometry.bounds.y + (event.clientY - rect.top - geometry.layout.y) / geometry.layout.scale };
+  }
+
+  centerOnWorld(point) {
+    if (!point) return; const rect = this.viewport.getBoundingClientRect(); const view = state.board.viewport;
+    view.x = rect.width / 2 - point.x * view.zoom; view.y = rect.height / 2 - point.y * view.zoom; this.applyTransform();
+  }
+
+  bindMinimap() {
+    const map = $("#minimap"); if (!map) return;
+    map.addEventListener("pointerdown", (event) => {
+      event.preventDefault(); event.stopPropagation(); map.setPointerCapture?.(event.pointerId); const geometry = this.minimapGeometry; this.centerOnWorld(this.minimapPoint(event, geometry));
+      const move = (moveEvent) => { if (moveEvent.pointerId === event.pointerId) this.centerOnWorld(this.minimapPoint(moveEvent, geometry)); };
+      const up = (upEvent) => { if (upEvent.pointerId !== event.pointerId) return; map.removeEventListener("pointermove", move); map.removeEventListener("pointerup", up); commit("viewport", false); };
+      map.addEventListener("pointermove", move); map.addEventListener("pointerup", up);
     });
   }
 }

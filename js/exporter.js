@@ -4,6 +4,7 @@ import { boardBounds, renderRegion } from "./screenshot.js";
 import { makeZip } from "./zip.js";
 import { downloadBlob, safeName } from "./utils.js";
 import { toast } from "./ui.js";
+import { isExportHidden } from "./item-tree.js";
 
 function uniqueAssetName(asset, used) {
   const safe = asset.name.replace(/[^a-z0-9._-]+/gi, "-") || `${asset.id}.bin`;
@@ -14,13 +15,21 @@ function uniqueAssetName(asset, used) {
 
 export async function exportBoard() {
   toast("Preparing export", "Collecting local board data and original assets.");
-  const referenced = new Set(state.board.nodes.map((node) => node.assetId).filter(Boolean));
+  const referenced = new Set(state.board.nodes.filter((node) => !isExportHidden(node)).map((node) => node.assetId).filter(Boolean));
   const assets = (await assetDb.all()).filter((asset) => referenced.has(asset.id)); const used = new Set(); const manifest = [];
   const entries = assets.map((asset) => {
     const name = uniqueAssetName(asset, used); manifest.push({ id: asset.id, name, originalName: asset.name, type: asset.type, size: asset.size });
     return { name: `assets/${name}`, data: asset.blob, date: new Date(asset.createdAt || Date.now()) };
   });
+  const hiddenNodeIds = new Set(state.board.nodes.filter(isExportHidden).map((item) => item.id));
+  const hiddenGroupIds = new Set(state.board.groups.filter(isExportHidden).map((item) => item.id));
+  const hiddenAxisIds = new Set(state.board.axes.filter(isExportHidden).map((item) => item.id));
   const board = structuredClone(state.board); board.exportedAt = new Date().toISOString(); board.assetManifest = manifest;
+  board.nodes = board.nodes.filter((node) => !hiddenNodeIds.has(node.id));
+  board.nodes.forEach((node) => { if (hiddenAxisIds.has(node.axisBinding?.axisId)) node.axisBinding = null; });
+  board.groups = board.groups.filter((group) => !hiddenGroupIds.has(group.id));
+  board.axes = board.axes.filter((axis) => !hiddenAxisIds.has(axis.id));
+  board.edges = board.edges.filter((edge) => !edge.hidden && !hiddenNodeIds.has(edge.from) && !hiddenNodeIds.has(edge.to));
   const preview = await renderRegion(boardBounds(), { scale: 1 });
   entries.unshift(
     { name: "board.json", data: JSON.stringify(board, null, 2) },
