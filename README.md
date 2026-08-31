@@ -26,6 +26,9 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 - Use the inspector to edit descriptions, categories, tags, groups, dimensions, text, and Markdown.
 - Choose **Capture**, then drag across a region to download a PNG automatically.
 - Choose **Export ZIP** to download `board.json`, every original asset, a full-board preview, and export notes.
+- Open **Boards** to create, switch, duplicate, archive, or delete local boards. Restore an exported ZIP as a new board, merge it into the current board, or replace the current board.
+- Open **Boards → History** to create checkpoints or restore automatically persisted earlier versions after a browser restart.
+- Choose **Find** or press `Ctrl/Cmd+K` to search text, Markdown, descriptions, tags, categories, groups, axes, and connection labels, then jump directly to a result.
 - Open **Settings** to switch all board connections between curved and straight paths.
 - Right-click or long-press an item, group, axis, or connection for its context menu.
 - Pinch with two fingers to zoom and pan. Touch targets and transform handles enlarge automatically on coarse-pointer devices.
@@ -49,6 +52,7 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 | `Ctrl/Cmd+D` | Duplicate selection |
 | `Ctrl/Cmd+G` | Group selection |
 | `Ctrl/Cmd+Shift+G` | Ungroup selection |
+| `Ctrl/Cmd+K` | Find and navigate to board content |
 | `Space` + drag | Temporarily pan |
 | `Delete` | Delete selection |
 | `Enter` | Edit the selected text or Markdown card |
@@ -63,10 +67,14 @@ The app opens at `http://127.0.0.1:8080`. Keep using the same browser and addres
 
 ## Checks
 
-Run the clipboard and selection regression check with:
+Run the regression checks with:
 
 ```bash
 node tests/clipboard.test.mjs
+node tests/restore.test.mjs
+node tests/search.test.mjs
+node tests/state.test.mjs
+node tests/zip.test.mjs
 ```
 
 ## Data and privacy

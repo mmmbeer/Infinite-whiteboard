@@ -278,7 +278,22 @@ export class InfiniteCanvas {
   }
   zoomBy(factor) { const rect = this.viewport.getBoundingClientRect(); const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; const point = this.screenToWorld(center); const view = state.board.viewport; view.zoom = clamp(view.zoom * factor, .12, 4); view.x = rect.width / 2 - point.x * view.zoom; view.y = rect.height / 2 - point.y * view.zoom; this.applyTransform(); commit("viewport", false); }
   resetZoom() { state.board.viewport.zoom = 1; this.applyTransform(); commit("viewport", false); }
-  fitBoard() { const items = [...state.board.nodes, ...state.board.groups]; const bounds = boundsOf(items, 90); const rect = this.viewport.getBoundingClientRect(); const zoom = clamp(Math.min(rect.width / bounds.w, rect.height / bounds.h), .12, 1.5); state.board.viewport = { zoom, x: (rect.width - bounds.w * zoom) / 2 - bounds.x * zoom, y: (rect.height - bounds.h * zoom) / 2 - bounds.y * zoom }; this.applyTransform(); commit("viewport", false); }
+  fitBoard() { const axes = state.board.axes.map((axis) => ({ ...axis, w: axis.orientation === "x" ? axis.length : 145, h: axis.orientation === "y" ? axis.length : 68 })); const items = [...state.board.nodes, ...state.board.groups, ...axes]; const bounds = boundsOf(items, 90); const rect = this.viewport.getBoundingClientRect(); const zoom = clamp(Math.min(rect.width / bounds.w, rect.height / bounds.h), .12, 1.5); state.board.viewport = { zoom, x: (rect.width - bounds.w * zoom) / 2 - bounds.x * zoom, y: (rect.height - bounds.h * zoom) / 2 - bounds.y * zoom }; this.applyTransform(); commit("viewport", false); }
+  focusItem(kind, id) {
+    let item = kind === "node" ? state.board.nodes.find((entry) => entry.id === id) : kind === "group" ? state.board.groups.find((entry) => entry.id === id) : state.board.axes.find((entry) => entry.id === id);
+    if (kind === "edge") {
+      const edge = state.board.edges.find((entry) => entry.id === id); const from = edge && state.board.nodes.find((entry) => entry.id === edge.from); const to = edge && state.board.nodes.find((entry) => entry.id === edge.to);
+      if (from && to) item = boundsOf([from, to], 30);
+      state.selected.clear(); state.selectedEdge = edge?.id || null;
+    } else {
+      state.selected.clear(); if (item) state.selected.add(item.id); state.selectedEdge = null;
+    }
+    if (!item) return false;
+    const width = item.w || (item.orientation === "x" ? item.length : 145); const height = item.h || (item.orientation === "y" ? item.length : 68);
+    const rect = this.viewport.getBoundingClientRect(); const view = state.board.viewport; view.zoom = clamp(view.zoom, .65, 1.4);
+    view.x = rect.width / 2 - (item.x + width / 2) * view.zoom; view.y = rect.height / 2 - (item.y + height / 2) * view.zoom;
+    this.applyTransform(); commit("viewport", false); this.refreshSelection(); return true;
+  }
   doubleClick(event) { if (!event.target.closest(".board-node,.group-box,.axis")) this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })); }
   contextTarget(target) {
     const node = target.closest?.(".board-node"); if (node) return { type: "node", id: node.dataset.id };

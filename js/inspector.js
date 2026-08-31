@@ -47,12 +47,16 @@ export function renderInspector(root, onChange, onDelete, onDuplicate) {
   root.innerHTML = edge ? edgeInspector(edge) : selected.kind === "node" ? nodeInspector(item) : selected.kind === "group" ? groupInspector(item) : axisInspector(item);
   root.querySelectorAll("[data-field]").forEach((control) => {
     const eventName = control.tagName === "SELECT" || control.type === "color" ? "change" : "input";
+    let editing = false;
+    control.addEventListener("focus", () => { if (!editing) snapshot("Before inspector edit"); editing = true; });
+    control.addEventListener("blur", () => { editing = false; });
     control.addEventListener(eventName, () => {
+      if (!editing) { snapshot("Before inspector edit"); editing = true; }
       const key = control.dataset.field;
       let value = control.value;
       if (["w", "h", "length"].includes(key)) value = Math.max(40, Number(value) || 40);
       if (["tags", "eras"].includes(key)) value = csvList(value);
-      snapshot(); item[key] = value || (key === "groupId" ? null : value); commit("inspector", false); onChange();
+      item[key] = value || (key === "groupId" ? null : value); commit("inspector", false); onChange();
     });
   });
   $("[data-delete]", root)?.addEventListener("click", async () => {

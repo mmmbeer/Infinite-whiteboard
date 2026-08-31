@@ -23,6 +23,8 @@
       <nav class="top-actions" aria-label="Board actions">
         <button class="button ghost" id="undo-btn" title="Undo (Ctrl+Z)">↶</button>
         <button class="button ghost" id="redo-btn" title="Redo (Ctrl+Shift+Z)">↷</button>
+        <button class="button" id="search-btn" title="Find on board (Ctrl+K)">Find</button>
+        <button class="button" id="boards-btn" title="Open boards, restore, and history">Boards</button>
         <button class="button" id="import-btn" title="Upload assets (U)">Upload</button>
         <button class="button" id="settings-btn" title="Board settings (S)">Settings</button>
         <button class="button ghost" id="shortcuts-btn" title="Keyboard and touch controls (?)" aria-label="Keyboard and touch controls">?</button>
@@ -70,6 +72,7 @@
     </aside>
 
     <input id="file-input" type="file" accept="image/*,.txt,.md,.markdown,text/plain,text/markdown" multiple hidden />
+    <input id="board-file-input" type="file" accept=".zip,.json,application/zip,application/json" hidden />
     <div id="modal-root"></div>
     <div id="toast-root" class="toast-root" aria-live="polite"></div>
   </main>

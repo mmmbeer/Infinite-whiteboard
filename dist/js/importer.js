@@ -21,7 +21,7 @@ export async function importFiles(files, point) {
   for (const file of accepted) {
     if (file.type.startsWith("image/")) {
       const assetId = uid("asset");
-      await assetDb.put({ id: assetId, name: file.name, type: file.type, size: file.size, blob: file, createdAt: Date.now() });
+      await assetDb.put({ id: assetId, boardId: state.board.id, name: file.name, type: file.type, size: file.size, blob: file, createdAt: Date.now() });
       const size = await imageDimensions(file);
       addNode({ type: "image", title: fileBase(file.name), description: file.name, assetId, x: point.x + offset, y: point.y + offset, ...size });
     } else {

@@ -147,6 +147,8 @@ select:focus-visible {
 }
 
 .save-status.saving::before { background: var(--accent); animation: pulse .8s infinite; }
+.save-status.error { color: #ffb7c1; }
+.save-status.error::before { background: var(--danger); box-shadow: 0 0 7px rgba(139, 38, 53, .55); }
 .top-actions { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
 
 .button {
@@ -179,7 +181,8 @@ select:focus-visible {
   .brand { width: 31px; font-size: 0; }
   .board-title-wrap { display: none; }
   .top-actions { grid-column: 2; }
-  .top-actions .button:not(.ghost) { padding: 5px 7px; font-size: 10px; }
+  .top-actions .button:not(.ghost) { padding: 5px 6px; font-size: 10px; }
+  #settings-btn, #shortcuts-btn { display: none; }
 }
 
 @media (max-width: 460px) {
@@ -188,4 +191,8 @@ select:focus-visible {
   .top-actions .button:not(.ghost) { padding-inline: 5px; }
   #export-btn { font-size: 0; }
   #export-btn::after { content: "ZIP"; font-size: 10px; }
+  #search-btn, #boards-btn, #import-btn { font-size: 0; }
+  #search-btn::after { content: "⌕"; font-size: 16px; }
+  #boards-btn::after { content: "▦"; font-size: 15px; }
+  #import-btn::after { content: "+"; font-size: 16px; }
 }

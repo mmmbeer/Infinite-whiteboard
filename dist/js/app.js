@@ -9,6 +9,7 @@ import { captureRegion } from "./screenshot.js";
 import { addNode, commit, getNode, loadBoard, onSaveStatus, redo, removeSelected, snapshot, state, subscribe, undo } from "./state.js";
 import { closeContextMenu, openContextMenu, openModal, promptDialog, toast } from "./ui.js";
 import { $, $$, csvList, escapeHtml, isTypingTarget } from "./utils.js";
+import { restoreBoardFile, showBoardManager, showSearch } from "./workspace.js";
 
 let canvas;
 let pendingImportPoint = null;
@@ -131,6 +132,7 @@ function showShortcuts() {
     ["Select / multi-select / pan / connect", "V / M / H / C"], ["Create item / upload", "N / U"], ["Add axis / capture", "A / P"],
     ["Add or remove from selection", "Ctrl/Cmd + click"], ["Select all", "Ctrl/Cmd + A"], ["Copy / cut / paste", "Ctrl/Cmd + C / X / V"],
     ["Duplicate selection", "Ctrl/Cmd + D"], ["Group / ungroup", "Ctrl/Cmd + G / Shift + Ctrl/Cmd + G"],
+    ["Find on board", "Ctrl/Cmd + K"],
     ["Undo / redo", "Ctrl/Cmd + Z / Shift + Ctrl/Cmd + Z"], ["Move selection", "Arrow keys (Shift = 10px)"],
     ["Delete / edit", "Delete / Enter"], ["Zoom in / out", "+ / −"], ["Reset / fit view", "1 / 0"],
     ["Settings / export", "S / E"], ["Clear selection", "Escape"], ["Shortcut reference", "?"],
@@ -172,6 +174,8 @@ function setTool(tool) {
 function bindToolbar() {
   $$(".tool").forEach((button) => button.addEventListener("click", () => setTool(button.dataset.tool)));
   $("#create-fab").onclick = () => showCreateMenu();
+  $("#search-btn").onclick = () => showSearch(canvas);
+  $("#boards-btn").onclick = () => showBoardManager(canvas);
   $("#import-btn").onclick = () => chooseUpload(canvas.viewportCenter());
   $("#settings-btn").onclick = showSettings;
   $("#shortcuts-btn").onclick = showShortcuts;
@@ -183,6 +187,7 @@ function bindToolbar() {
   $("#board-title").addEventListener("focus", () => snapshot());
   $("#board-title").addEventListener("input", (event) => { state.board.title = event.target.value; commit("title", false); });
   $("#file-input").addEventListener("change", async (event) => { if (event.target.files.length) await importFiles(event.target.files, pendingImportPoint || canvas.viewportCenter()); event.target.value = ""; pendingImportPoint = null; canvas.refresh("import"); });
+  $("#board-file-input").addEventListener("change", async (event) => { const file = event.target.files[0]; event.target.value = ""; if (file) await restoreBoardFile(file, canvas); });
 }
 
 function bindDragDrop() {
@@ -207,6 +212,7 @@ function bindKeyboard() {
     if (command && key === "v") { event.preventDefault(); pasteItems(); return; }
     if (command && key === "d") { event.preventDefault(); duplicateItems(); return; }
     if (command && key === "g") { event.preventDefault(); event.shiftKey ? ungroupSelection() : createSelectedGroup(); return; }
+    if (command && key === "k") { event.preventDefault(); showSearch(canvas); return; }
     if (["Backspace", "Delete"].includes(event.key)) { event.preventDefault(); deleteSelection(); return; }
     if (event.key === "Escape") { closeContextMenu(); if (!clearSelection()) setTool("select"); return; }
     if (event.key === "Enter") { event.preventDefault(); editSelected(); return; }
@@ -235,7 +241,7 @@ function bindKeyboard() {
 async function start() {
   await loadBoard(); $("#board-title").value = state.board.title;
   canvas = new InfiniteCanvas({ onSelection: selectionChanged, onCreate: showCreateMenu, onContext: showItemContext, onCapture: (region) => captureRegion(region).catch((error) => toast("Capture failed", error.message, "error")), onEditNode: (node) => node.type !== "image" && editTextNode(node, () => canvas.refresh("edit")) });
-  onSaveStatus((status) => { const element = $("#save-status"); element.textContent = status === "saving" ? "Saving locally…" : "Saved locally"; element.classList.toggle("saving", status === "saving"); });
+  onSaveStatus((status, error) => { const element = $("#save-status"); element.textContent = status === "saving" ? "Saving locally…" : status === "error" ? "Save failed" : "Saved locally"; element.classList.toggle("saving", status === "saving"); element.classList.toggle("error", status === "error"); element.title = status === "error" ? error?.message || "Local save failed" : ""; });
   bindToolbar(); bindDragDrop(); bindKeyboard(); subscribe((reason) => { if (reason === "history") $("#board-title").value = state.board.title; }); canvas.init();
   if (!state.board.nodes.length && !state.board.axes.length) toast("Board ready", "Double-click, right-click, or long-press anywhere to create.");
 }

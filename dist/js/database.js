@@ -1,7 +1,8 @@
 const DB_NAME = "infinite-whiteboard";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const BOARD_STORE = "boards";
 const ASSET_STORE = "assets";
+const HISTORY_STORE = "history";
 let dbPromise;
 
 function openDb() {
@@ -12,6 +13,7 @@ function openDb() {
       const db = request.result;
       if (!db.objectStoreNames.contains(BOARD_STORE)) db.createObjectStore(BOARD_STORE, { keyPath: "id" });
       if (!db.objectStoreNames.contains(ASSET_STORE)) db.createObjectStore(ASSET_STORE, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(HISTORY_STORE)) db.createObjectStore(HISTORY_STORE, { keyPath: "id" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -31,6 +33,8 @@ function transact(storeName, mode, operation) {
 export const boardDb = {
   get: (id = "default") => transact(BOARD_STORE, "readonly", (store) => store.get(id)),
   put: (board) => transact(BOARD_STORE, "readwrite", (store) => store.put(board)),
+  delete: (id) => transact(BOARD_STORE, "readwrite", (store) => store.delete(id)),
+  all: () => transact(BOARD_STORE, "readonly", (store) => store.getAll()),
 };
 
 export const assetDb = {
@@ -38,4 +42,10 @@ export const assetDb = {
   put: (asset) => transact(ASSET_STORE, "readwrite", (store) => store.put(asset)),
   delete: (id) => transact(ASSET_STORE, "readwrite", (store) => store.delete(id)),
   all: () => transact(ASSET_STORE, "readonly", (store) => store.getAll()),
+};
+
+export const historyDb = {
+  get: (id) => transact(HISTORY_STORE, "readonly", (store) => store.get(id)),
+  put: (record) => transact(HISTORY_STORE, "readwrite", (store) => store.put(record)),
+  delete: (id) => transact(HISTORY_STORE, "readwrite", (store) => store.delete(id)),
 };

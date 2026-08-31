@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 const crcTable = (() => {
   const table = new Uint32Array(256);
@@ -25,4 +26,34 @@ export async function makeZip(entries) {
   const central = concat(centralParts); const local = concat(localParts);
   const end = concat([u32(0x06054b50), u16(0), u16(0), u16(entries.length), u16(entries.length), u32(central.length), u32(local.length), u16(0)]);
   return new Blob([local, central, end], { type: "application/zip" });
+}
+
+async function inflate(bytes) {
+  if (typeof DecompressionStream === "undefined") throw new Error("This browser cannot read compressed ZIP files.");
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+export async function readZip(source) {
+  const bytes = source instanceof Uint8Array ? source : new Uint8Array(await source.arrayBuffer());
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength); const entries = new Map();
+  let offset = 0;
+  while (offset + 4 <= bytes.length) {
+    const signature = view.getUint32(offset, true);
+    if (signature === 0x02014b50 || signature === 0x06054b50) break;
+    if (signature !== 0x04034b50 || offset + 30 > bytes.length) throw new Error("The ZIP backup is not valid.");
+    const flags = view.getUint16(offset + 6, true); const method = view.getUint16(offset + 8, true);
+    const expectedCrc = view.getUint32(offset + 14, true); const compressedSize = view.getUint32(offset + 18, true);
+    const expectedSize = view.getUint32(offset + 22, true); const nameLength = view.getUint16(offset + 26, true); const extraLength = view.getUint16(offset + 28, true);
+    if (flags & 0x08) throw new Error("ZIP backups with data descriptors are not supported.");
+    const nameStart = offset + 30; const dataStart = nameStart + nameLength + extraLength; const dataEnd = dataStart + compressedSize;
+    if (dataEnd > bytes.length) throw new Error("The ZIP backup is truncated.");
+    const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
+    const compressed = bytes.slice(dataStart, dataEnd); const data = method === 0 ? compressed : method === 8 ? await inflate(compressed) : null;
+    if (!data) throw new Error(`Unsupported ZIP compression method for ${name}.`);
+    if (data.length !== expectedSize || crc32(data) !== expectedCrc) throw new Error(`ZIP integrity check failed for ${name}.`);
+    entries.set(name, data); offset = dataEnd;
+  }
+  if (!entries.size) throw new Error("The ZIP backup contains no readable files.");
+  return entries;
 }

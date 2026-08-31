@@ -14,7 +14,8 @@ function uniqueAssetName(asset, used) {
 
 export async function exportBoard() {
   toast("Preparing export", "Collecting local board data and original assets.");
-  const assets = await assetDb.all(); const used = new Set(); const manifest = [];
+  const referenced = new Set(state.board.nodes.map((node) => node.assetId).filter(Boolean));
+  const assets = (await assetDb.all()).filter((asset) => referenced.has(asset.id)); const used = new Set(); const manifest = [];
   const entries = assets.map((asset) => {
     const name = uniqueAssetName(asset, used); manifest.push({ id: asset.id, name, originalName: asset.name, type: asset.type, size: asset.size });
     return { name: `assets/${name}`, data: asset.blob, date: new Date(asset.createdAt || Date.now()) };
