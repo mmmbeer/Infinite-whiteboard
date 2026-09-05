@@ -151,6 +151,8 @@ function persistHistory(boardId = state.board?.id) {
 export function onSaveStatus(listener) { saveListener = listener; }
 export function subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); }
 export function notify(reason = "update") { listeners.forEach((listener) => listener(reason)); }
+export function canUndo() { return history.length > 0; }
+export function canRedo() { return future.length > 0; }
 export function snapshot(reason = "Change", label = "") {
   history.push({ id: uid("version"), at: Date.now(), reason, label, board: structuredClone(state.board) });
   if (history.length > 80) history.shift();

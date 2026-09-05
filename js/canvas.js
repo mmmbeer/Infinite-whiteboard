@@ -42,6 +42,7 @@ export class InfiniteCanvas {
     this.liveFrame = null; this.minimapFrame = null;
     this.liveNodeIds = new Set(); this.liveGroups = new Set(); this.liveAxes = new Set();
     this.touchPoints = new Map(); this.pinch = null; this.touchGestureActive = false;
+    this.lastTouchTap = null; this.suppressDoubleClickUntil = 0; this.wheelCommitTimer = null;
   }
 
   init() {
@@ -176,7 +177,7 @@ export class InfiniteCanvas {
   setTool(tool) {
     state.tool = tool; $$(".tool").forEach((button) => button.classList.toggle("active", button.dataset.tool === tool));
     this.world.classList.toggle("connect-mode", tool === "connect");
-    this.viewport.style.cursor = tool === "hand" ? "grab" : tool === "capture" ? "crosshair" : "default";
+    this.viewport.style.cursor = tool === "capture" || tool === "multi" ? "crosshair" : "grab";
   }
 
   pointerDown(event) {
@@ -192,18 +193,36 @@ export class InfiniteCanvas {
     if (event.target.closest(".group-box,.axis") && state.tool === "select") return this.startItemDrag(event);
     if (interactive) return;
     if (state.tool === "capture") return this.startCapture(event);
-    this.startLongPress(event, () => this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })));
-    this.startSelection(event);
+    const wantsMarquee = state.tool === "multi" || event.shiftKey || event.ctrlKey || event.metaKey;
+    if (wantsMarquee) {
+      if (event.pointerType === "touch") this.startLongPress(event, () => this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })));
+      return this.startSelection(event);
+    }
+    if (event.pointerType === "touch") this.startLongPress(event, () => this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })));
+    this.startPan(event, { clearOnClick: true });
   }
 
   shouldPan(event) { return this.isGesturing() || state.tool === "hand" || event.button === 1 || event.altKey || this.spaceDown; }
 
-  startPan(event) {
-    event.preventDefault(); const view = state.board.viewport; const origin = { x: view.x, y: view.y, cx: event.clientX, cy: event.clientY };
+  startPan(event, { clearOnClick = false } = {}) {
+    event.preventDefault(); const view = state.board.viewport; const origin = { x: view.x, y: view.y, cx: event.clientX, cy: event.clientY }; let moved = false;
     this.viewport.style.cursor = "grabbing";
-    const move = (e) => { if (e.pointerId !== event.pointerId || this.isGesturing()) return; view.x = origin.x + e.clientX - origin.cx; view.y = origin.y + e.clientY - origin.cy; this.applyTransform(); };
-    const up = (e) => { if (e.pointerId !== event.pointerId) return; document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); this.viewport.style.cursor = state.tool === "hand" ? "grab" : "default"; commit("viewport", false); };
+    const move = (e) => {
+      if (e.pointerId !== event.pointerId || this.isGesturing()) return;
+      const dx = e.clientX - origin.cx; const dy = e.clientY - origin.cy;
+      if (!moved && Math.hypot(dx, dy) < 3) return;
+      moved = true; this.cancelLongPress(); view.x = origin.x + dx; view.y = origin.y + dy; this.applyTransform();
+    };
+    const up = (e) => {
+      if (e.pointerId !== event.pointerId) return;
+      document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
+      this.viewport.style.cursor = state.tool === "capture" || state.tool === "multi" ? "crosshair" : "grab";
+      if (moved) commit("viewport", false);
+      else if (clearOnClick) { state.selected.clear(); state.selectedEdge = null; this.refreshSelection(); }
+      this.cancelLongPress();
+    };
     document.addEventListener("pointermove", move); document.addEventListener("pointerup", up);
+    document.addEventListener("pointercancel", up);
   }
 
   startSelection(event) {
@@ -298,11 +317,16 @@ export class InfiniteCanvas {
 
   wheel(event) {
     event.preventDefault();
-    if (event.shiftKey && !event.ctrlKey && !event.metaKey) { state.board.viewport.x -= event.deltaY; this.applyTransform(); return; }
-    const point = this.screenToWorld({ x: event.clientX, y: event.clientY }); const view = state.board.viewport;
+    const view = state.board.viewport;
+    if (!event.ctrlKey && !event.metaKey) {
+      const horizontal = event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX;
+      view.x -= horizontal; view.y -= event.shiftKey ? 0 : event.deltaY; this.applyTransform(); this.scheduleViewportCommit(); return;
+    }
+    const point = this.screenToWorld({ x: event.clientX, y: event.clientY });
     const next = clamp(view.zoom * Math.exp(-event.deltaY * .0014), .12, 4);
-    const rect = this.viewport.getBoundingClientRect(); view.x = event.clientX - rect.left - point.x * next; view.y = event.clientY - rect.top - point.y * next; view.zoom = next; this.applyTransform();
+    const rect = this.viewport.getBoundingClientRect(); view.x = event.clientX - rect.left - point.x * next; view.y = event.clientY - rect.top - point.y * next; view.zoom = next; this.applyTransform(); this.scheduleViewportCommit();
   }
+  scheduleViewportCommit() { clearTimeout(this.wheelCommitTimer); this.wheelCommitTimer = setTimeout(() => commit("viewport", false), 180); }
   zoomBy(factor) { const rect = this.viewport.getBoundingClientRect(); const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; const point = this.screenToWorld(center); const view = state.board.viewport; view.zoom = clamp(view.zoom * factor, .12, 4); view.x = rect.width / 2 - point.x * view.zoom; view.y = rect.height / 2 - point.y * view.zoom; this.applyTransform(); commit("viewport", false); }
   resetZoom() { state.board.viewport.zoom = 1; this.applyTransform(); commit("viewport", false); }
   fitBoard() { const axes = state.board.axes.filter((item) => !isEffectivelyHidden(item)).map((axis) => ({ ...axis, w: axis.orientation === "x" ? axis.length : 145, h: axis.orientation === "y" ? axis.length : 68 })); const items = [...state.board.nodes, ...state.board.groups].filter((item) => !isEffectivelyHidden(item)).concat(axes); const bounds = boundsOf(items, 90); const rect = this.viewport.getBoundingClientRect(); const zoom = clamp(Math.min(rect.width / bounds.w, rect.height / bounds.h), .12, 1.5); state.board.viewport = { zoom, x: (rect.width - bounds.w * zoom) / 2 - bounds.x * zoom, y: (rect.height - bounds.h * zoom) / 2 - bounds.y * zoom }; this.applyTransform(); commit("viewport", false); }
@@ -323,7 +347,7 @@ export class InfiniteCanvas {
     view.x = rect.width / 2 - (item.x + width / 2) * view.zoom; view.y = rect.height / 2 - (item.y + height / 2) * view.zoom;
     this.applyTransform(); commit("viewport", false); this.refreshSelection(); return true;
   }
-  doubleClick(event) { if (!event.target.closest(".board-node,.group-box,.axis")) this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })); }
+  doubleClick(event) { if (Date.now() < this.suppressDoubleClickUntil) return; if (!event.target.closest(".board-node,.group-box,.axis")) this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY })); }
   contextTarget(target) {
     const node = target.closest?.(".board-node"); if (node) return { type: "node", id: node.dataset.id };
     const group = target.closest?.(".group-box"); if (group) return { type: "group", id: group.dataset.id };
@@ -334,12 +358,12 @@ export class InfiniteCanvas {
   startLongPress(event, action) { this.cancelLongPress(); this.longPress = setTimeout(() => { this.longPress = null; navigator.vibrate?.(18); action(); }, 560); }
   cancelLongPress() { clearTimeout(this.longPress); this.longPress = null; }
   cancelDrag() { this.cancelLongPress(); this.selectionBox.classList.add("hidden"); this.captureBox.classList.add("hidden"); }
-  setSpace(value) { this.spaceDown = value; this.viewport.style.cursor = value ? "grab" : state.tool === "hand" ? "grab" : "default"; }
+  setSpace(value) { this.spaceDown = value; this.viewport.style.cursor = value || !["capture", "multi"].includes(state.tool) ? "grab" : "crosshair"; }
   viewportCenter() { const rect = this.viewport.getBoundingClientRect(); return this.screenToWorld({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }); }
 
   trackTouchStart(event) {
     if (event.pointerType !== "touch") return;
-    this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY });
+    this.touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, startedAt: Date.now(), target: this.contextTarget(event.target) });
     if (this.touchPoints.size !== 2) return;
     this.cancelLongPress(); this.touchGestureActive = true;
     const [a, b] = [...this.touchPoints.values()];
@@ -365,10 +389,23 @@ export class InfiniteCanvas {
   }
 
   trackTouchEnd(event) {
-    if (!this.touchPoints.has(event.pointerId)) return;
+    const point = this.touchPoints.get(event.pointerId); if (!point) return;
+    const wasPinching = Boolean(this.pinch) || this.touchGestureActive && this.touchPoints.size > 1;
     this.touchPoints.delete(event.pointerId); this.cancelLongPress();
     if (this.pinch && this.touchPoints.size < 2) { this.pinch = null; commit("viewport", false); }
     if (!this.touchPoints.size) this.touchGestureActive = false;
+    const distance = Math.hypot(event.clientX - point.startX, event.clientY - point.startY);
+    if (!wasPinching && distance < 10 && Date.now() - point.startedAt < 360) this.handleTouchTap(event, point.target);
+  }
+
+  handleTouchTap(event, target) {
+    const key = target ? `${target.type}:${target.id}` : "canvas"; const now = Date.now();
+    const repeated = this.lastTouchTap && this.lastTouchTap.key === key && now - this.lastTouchTap.at < 320 && Math.hypot(event.clientX - this.lastTouchTap.x, event.clientY - this.lastTouchTap.y) < 28;
+    this.lastTouchTap = { key, at: now, x: event.clientX, y: event.clientY };
+    if (!repeated) return;
+    this.lastTouchTap = null; this.suppressDoubleClickUntil = now + 500; navigator.vibrate?.(10);
+    if (target?.type === "node") { const node = state.board.nodes.find((item) => item.id === target.id); if (node && !isEffectivelyLocked(node) && node.type !== "image") this.onEditNode?.(node); return; }
+    if (!target) this.onCreate(this.screenToWorld({ x: event.clientX, y: event.clientY }));
   }
 
   isGesturing() { return this.touchGestureActive; }

@@ -7,7 +7,7 @@ import { importFiles } from "./importer.js";
 import { editTextNode, renderInspector } from "./inspector.js";
 import { openMarkdownEditor } from "./markdown-editor.js";
 import { captureRegion } from "./screenshot.js";
-import { addNode, commit, getNode, loadBoard, onSaveStatus, redo, removeSelected, snapshot, state, subscribe, undo } from "./state.js";
+import { addNode, canRedo, canUndo, commit, getNode, loadBoard, onSaveStatus, redo, removeSelected, snapshot, state, subscribe, undo } from "./state.js";
 import { closeContextMenu, openContextMenu, openModal, promptDialog, toast } from "./ui.js";
 import { $, $$, csvList, escapeHtml, isTypingTarget } from "./utils.js";
 import { restoreBoardFile, showBoardManager, showSearch } from "./workspace.js";
@@ -16,12 +16,14 @@ import { reorderSelected, setSelectedState, toggleGroupCollapse, translateSelect
 import { showBookmarks } from "./navigation.js";
 import { showLayers } from "./layers.js";
 import { getGroup, getItem, isEffectivelyHidden, topLevelSelection } from "./item-tree.js";
+import { showTutorial, showTutorialOnce } from "./tutorial.js";
 
 let canvas;
 let pendingImportPoint = null;
 
 function selectionChanged() {
   renderInspector($("#inspector"), () => canvas.refresh("inspector-live"), deleteSelection, duplicateItems);
+  updateActionStates();
 }
 
 function deleteSelection() {
@@ -66,11 +68,12 @@ function showAxisDialog(point = canvas.viewportCenter()) {
 function showSettings() {
   const form = document.createElement("div");
   const current = state.board.settings?.connectionType || "curved";
-  form.innerHTML = `<div class="field"><label>Default connection type</label><select data-connection-type><option value="curved" ${current === "curved" ? "selected" : ""}>Curved</option><option value="straight" ${current === "straight" ? "selected" : ""}>Straight</option></select></div><label class="check-field"><input type="checkbox" data-snap-enabled ${state.board.settings.snapEnabled !== false ? "checked" : ""}/> Alignment snapping</label><label class="check-field"><input type="checkbox" data-grid-snap ${state.board.settings.gridSnap ? "checked" : ""}/> Snap to dot grid</label><label class="check-field"><input type="checkbox" data-axis-snap ${state.board.settings.axisSnap !== false ? "checked" : ""}/> Attach cards dropped on axis ticks</label><div class="field"><label>Snap distance</label><input type="number" min="2" max="30" data-snap-distance value="${state.board.settings.snapDistance || 8}" /></div><p class="modal-copy">Hold Alt while dragging to temporarily bypass snapping.</p>`;
-  openModal({ title: "Board settings", content: form, actions: [
+  form.innerHTML = `<div class="field"><label>Default connection type</label><select data-connection-type><option value="curved" ${current === "curved" ? "selected" : ""}>Curved</option><option value="straight" ${current === "straight" ? "selected" : ""}>Straight</option></select></div><label class="check-field"><input type="checkbox" data-snap-enabled ${state.board.settings.snapEnabled !== false ? "checked" : ""}/> Alignment snapping</label><label class="check-field"><input type="checkbox" data-grid-snap ${state.board.settings.gridSnap ? "checked" : ""}/> Snap to dot grid</label><label class="check-field"><input type="checkbox" data-axis-snap ${state.board.settings.axisSnap !== false ? "checked" : ""}/> Attach cards dropped on axis ticks</label><div class="field"><label>Snap distance</label><input type="number" min="2" max="30" data-snap-distance value="${state.board.settings.snapDistance || 8}" /></div><p class="modal-copy">Hold Alt while dragging to temporarily bypass snapping.</p><div class="settings-tour"><p>Replay the guided tour of canvas gestures and board features.</p><button type="button" class="button" data-open-tutorial>View tutorial</button></div>`;
+  const modal = openModal({ title: "Board settings", content: form, actions: [
     { label: "Cancel", onClick: () => null },
     { label: "Save settings", className: "primary", onClick: (body) => { snapshot(); Object.assign(state.board.settings, { connectionType: $("[data-connection-type]", body).value, snapEnabled: $("[data-snap-enabled]", body).checked, gridSnap: $("[data-grid-snap]", body).checked, axisSnap: $("[data-axis-snap]", body).checked, snapDistance: Number($("[data-snap-distance]", body).value) || 8 }); commit("settings", false); canvas.refresh("settings"); return true; } },
   ] });
+  $("[data-open-tutorial]", form).onclick = () => { modal.close(); setTimeout(() => showTutorial({ force: true }), 0); };
 }
 
 function createSelectedGroup() {
@@ -146,7 +149,8 @@ function editSelected() {
 
 function showShortcuts() {
   const shortcuts = [
-    ["Select / multi-select / pan / connect", "V / M / H / C"], ["Create item / upload", "N / U"], ["Add axis / capture", "A / P"],
+    ["Select / multi-select / pan / connect", "V / M / H / C"], ["Pan empty canvas", "Primary drag / one finger"], ["Trackpad or wheel pan", "Scroll"], ["Pointer-centered zoom", "Ctrl/Cmd + scroll"],
+    ["Marquee select", "Shift + drag / Multi tool"], ["Create item / upload", "N / U"], ["Add axis / capture", "A / P"],
     ["Add or remove from selection", "Ctrl/Cmd + click"], ["Select all", "Ctrl/Cmd + A"], ["Copy / cut / paste", "Ctrl/Cmd + C / X / V"],
     ["Duplicate selection", "Ctrl/Cmd + D"], ["Group / ungroup", "Ctrl/Cmd + G / Shift + Ctrl/Cmd + G"],
     ["Find on board", "Ctrl/Cmd + K"],
@@ -155,7 +159,7 @@ function showShortcuts() {
     ["Layer backward / forward", "[ / ]"], ["Layers / bookmarks", "L / B"],
     ["Settings / export", "S / E"], ["Clear selection", "Escape"], ["Shortcut reference", "?"],
   ];
-  const content = `<dl class="shortcut-list">${shortcuts.map(([label, key]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(key)}</dd>`).join("")}</dl><p class="modal-copy">Touch: pinch with two fingers to zoom and pan. Long-press an item for actions. Larger handles appear automatically on touch screens.</p>`;
+  const content = `<dl class="shortcut-list">${shortcuts.map(([label, key]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(key)}</dd>`).join("")}</dl><p class="modal-copy">Touch: pinch with two fingers to zoom and pan, double-tap empty canvas to create, double-tap a text card to edit, and long-press for contextual actions. Larger handles appear automatically on touch screens.</p>`;
   openModal({ title: "Keyboard & touch controls", content, actions: [{ label: "Close", className: "primary", onClick: () => true }] });
 }
 
@@ -190,9 +194,25 @@ function showItemContext({ type, id, x, y, point }) {
 }
 
 function setTool(tool) {
+  if ($(`[data-tool="${tool}"]`)?.disabled) return;
   if (tool === "group") return createSelectedGroup();
   if (tool === "axis") return showAxisDialog();
   canvas.setTool(tool);
+}
+
+function updateActionStates() {
+  if (!state.board) return;
+  const items = [...state.board.nodes, ...state.board.groups, ...state.board.axes];
+  const groupable = topLevelSelection().filter((item) => state.board.nodes.includes(item) || state.board.groups.includes(item));
+  $("#undo-btn").disabled = !canUndo();
+  $("#redo-btn").disabled = !canRedo();
+  $("#arrange-btn").disabled = topLevelSelection().length < 2;
+  $("#search-btn").disabled = !items.length && !state.board.edges.length;
+  $("#layers-btn").disabled = !items.length && !state.board.edges.length;
+  $("#zoom-selection").disabled = !state.selected.size && !state.selectedEdge;
+  $("[data-tool='group']").disabled = !groupable.length;
+  $("[data-tool='connect']").disabled = state.board.nodes.filter((node) => !isEffectivelyHidden(node)).length < 2;
+  if (state.tool === "connect" && $("[data-tool='connect']").disabled) canvas?.setTool("select");
 }
 
 function bindToolbar() {
@@ -216,6 +236,7 @@ function bindToolbar() {
   $("#board-title").addEventListener("input", (event) => { state.board.title = event.target.value; commit("title", false); });
   $("#file-input").addEventListener("change", async (event) => { if (event.target.files.length) await importFiles(event.target.files, pendingImportPoint || canvas.viewportCenter()); event.target.value = ""; pendingImportPoint = null; canvas.refresh("import"); });
   $("#board-file-input").addEventListener("change", async (event) => { const file = event.target.files[0]; event.target.value = ""; if (file) await restoreBoardFile(file, canvas); });
+  updateActionStates();
 }
 
 function bindDragDrop() {
@@ -275,7 +296,8 @@ async function start() {
   await loadBoard(); $("#board-title").value = state.board.title;
   canvas = new InfiniteCanvas({ onSelection: selectionChanged, onCreate: showCreateMenu, onContext: showItemContext, onCapture: (region) => captureRegion(region).catch((error) => toast("Capture failed", error.message, "error")), onEditNode: (node) => node.type !== "image" && editTextNode(node, () => canvas.refresh("edit")) });
   onSaveStatus((status, error) => { const element = $("#save-status"); element.textContent = status === "saving" ? "Saving locally…" : status === "error" ? "Save failed" : "Saved locally"; element.classList.toggle("saving", status === "saving"); element.classList.toggle("error", status === "error"); element.title = status === "error" ? error?.message || "Local save failed" : ""; });
-  bindToolbar(); bindDragDrop(); bindKeyboard(); subscribe((reason) => { if (reason === "history") $("#board-title").value = state.board.title; }); canvas.init();
+  bindToolbar(); bindDragDrop(); bindKeyboard(); subscribe((reason) => { if (reason === "history") $("#board-title").value = state.board.title; updateActionStates(); }); canvas.init();
+  setTimeout(() => showTutorialOnce(), 420);
   if (!state.board.nodes.length && !state.board.axes.length) toast("Board ready", "Double-click, right-click, or long-press anywhere to create.");
 }
 

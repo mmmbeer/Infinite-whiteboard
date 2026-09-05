@@ -6,7 +6,10 @@
     radial-gradient(circle at 50% -20%, rgba(255, 113, 91, .04), transparent 38%),
     var(--canvas);
   touch-action: none;
+  cursor: grab;
 }
+
+.viewport:active { cursor: grabbing; }
 
 .viewport::after {
   content: "";
